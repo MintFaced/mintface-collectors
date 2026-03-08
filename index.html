@@ -3,2501 +3,2261 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MintFace — Collector Terrain</title>
+<script>
+  // ─────────────────────────────────────────────────────────────
+  //  ASSET BASE URL — change this one line when you migrate storage
+  //
+  //  Current options:
+  //    Old site (temporary):   'https://mintface.art/assets'
+  //    Railway (same server):  '/assets'
+  //    Cloudflare R2:          'https://your-bucket.r2.dev/assets'
+  //    AWS S3 + CloudFront:    'https://your-cdn.cloudfront.net/assets'
+  //    Bunny.net:              'https://your-zone.b-cdn.net/assets'
+  // ─────────────────────────────────────────────────────────────
+  const ASSETS_BASE = 'https://pub-40b0b488cd5b4b6597427eb295d7ca63.r2.dev/assets';
+
+  // Rewrites all image src tokens once the DOM is ready — do not edit below
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('img[src^="ASSETS_BASE"]').forEach(img => {
+      img.src = img.src.replace(/.*ASSETS_BASE/, ASSETS_BASE);
+    });
+  });
+</script>
+<title>MintFace</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@privy-io/js-sdk-core@latest/dist/index.umd.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Neue+Haas+Grotesk+Display+Pro:wght@400;500&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --void: #04040a;
-    --deep: #080812;
-    --surface: #0d0d1a;
-    --grid: rgba(100,120,200,0.08);
-    --grid-bright: rgba(100,120,200,0.18);
-    --ink: #e8e4d8;
-    --ink-dim: rgba(232,228,216,0.4);
-    --ink-faint: rgba(232,228,216,0.15);
+    --ink: #0e0d0b;
+    --paper: #f2efe9;
+    --warm-mid: #b8b0a4;
     --accent: #8b3a2a;
-    --accent-glow: rgba(139,58,42,0.3);
-    --survey: #c4a882;
-    --survey-dim: rgba(196,168,130,0.3);
-    --node-mintface: #e8c97a;
-    --node-artblocks: #7a9ee8;
-    --node-photography: #7ae8c4;
-    --node-human: #e87a9e;
-    --edge-affinity: rgba(200,180,120,0.25);
-    --edge-hold: rgba(255,255,255,0.06);
+    --accent-light: #c4705a;
+    --grid: #e2ddd6;
     --mono: 'Space Mono', monospace;
     --serif: 'Cormorant Garamond', Georgia, serif;
-    --elevation-low: #1a3a2a;
-    --elevation-mid: #2a5a3a;
-    --elevation-high: #4a8a5a;
-    --elevation-peak: #7ae8a0;
+    --sans: 'Neue Haas Grotesk Display Pro', 'Helvetica Neue', Helvetica, sans-serif;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
   html { scroll-behavior: smooth; }
 
   body {
-    background: var(--void);
+    background: var(--paper);
     color: var(--ink);
-    font-family: var(--mono);
-    font-size: 12px;
+    font-family: var(--serif);
+    font-size: 18px;
     line-height: 1.6;
     overflow-x: hidden;
-    cursor: crosshair;
   }
 
-  /* ── SCAN LINE TEXTURE ── */
+  /* ── NOISE TEXTURE ── */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
     pointer-events: none;
-    z-index: 9998;
+    z-index: 9999;
   }
 
   /* ── NAV ── */
   nav {
     position: fixed;
     top: 0; left: 0; right: 0;
-    z-index: 200;
+    z-index: 100;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 40px;
-    background: linear-gradient(to bottom, var(--void), transparent);
+    padding: 24px 48px;
+    mix-blend-mode: multiply;
   }
 
-  .nav-brand {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .nav-logo {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--ink);
     text-decoration: none;
-  }
-
-  .nav-brand-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    color: var(--survey);
-  }
-
-  .nav-brand-sub {
-    font-family: var(--mono);
-    font-size: 8px;
-    letter-spacing: 0.2em;
-    color: var(--ink-dim);
-    text-transform: uppercase;
-  }
-
-  .nav-right {
-    display: flex;
-    align-items: center;
-    gap: 32px;
   }
 
   .nav-links {
     display: flex;
-    gap: 28px;
+    gap: 36px;
     list-style: none;
   }
 
   .nav-links a {
-    font-size: 9px;
+    font-family: var(--sans);
+    font-size: 10px;
+    font-weight: 400;
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: var(--ink-dim);
+    color: var(--ink);
     text-decoration: none;
-    transition: color 0.2s;
+    opacity: 0.6;
+    transition: opacity 0.2s;
   }
 
-  .nav-links a:hover { color: var(--survey); }
+  .nav-links a:hover { opacity: 1; }
 
-  /* ── WALLET CONNECT BUTTON ── */
-  #wallet-btn {
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--survey);
-    background: none;
-    border: 1px solid var(--survey-dim);
-    padding: 8px 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  #wallet-btn:hover {
-    background: var(--survey-dim);
-    border-color: var(--survey);
-  }
-
-  #wallet-btn.connected {
-    color: var(--node-mintface);
-    border-color: rgba(232,201,122,0.3);
-  }
-
-  /* ── HERO / TERRAIN SECTION ── */
-  #terrain {
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     position: relative;
-    width: 100%;
-    height: 100vh;
     overflow: hidden;
   }
 
-  #terrain-svg {
-    width: 100%;
-    height: 100%;
-  }
-
-  /* Coordinate grid lines */
-  .grid-line { stroke: var(--grid); stroke-width: 1; }
-  .grid-line-bright { stroke: var(--grid-bright); stroke-width: 1; }
-
-  /* Survey tick marks */
-  .survey-tick { fill: none; stroke: var(--survey-dim); stroke-width: 1; }
-
-  /* Collection cluster labels */
-  .cluster-label {
-    font-family: var(--mono);
-    font-size: 8px;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    fill: var(--ink-dim);
-  }
-
-  .cluster-label-main {
-    font-size: 10px;
-    fill: var(--survey);
-    letter-spacing: 0.25em;
-  }
-
-  /* Collector nodes */
-  .collector-node {
-    cursor: pointer;
-    transition: r 0.2s;
-  }
-
-  .collector-node circle {
-    stroke-width: 1.5;
-    transition: all 0.3s;
-  }
-
-  .collector-node:hover circle { stroke-width: 2.5; }
-
-  .collector-node text {
-    font-family: var(--mono);
-    font-size: 8px;
-    fill: var(--ink-dim);
-    pointer-events: none;
-  }
-
-  /* Collection anchor nodes */
-  .collection-node circle {
-    stroke-width: 2;
-  }
-
-  /* Edges */
-  .edge-hold { stroke: var(--edge-hold); stroke-width: 1; }
-  .edge-affinity-artblocks { stroke: var(--node-artblocks); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
-  .edge-affinity-photo { stroke: var(--node-photography); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
-  .edge-affinity-human { stroke: var(--node-human); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
-
-  /* Highlighted / selected collector */
-  .collector-node.highlight circle {
-    stroke: #ffffff !important;
-    stroke-width: 2.5 !important;
-    animation: node-pulse 1.8s ease-in-out infinite;
-  }
-
-  @keyframes node-pulse {
-    0%   { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); stroke-width: 2.5px; }
-    50%  { filter: drop-shadow(0 0 14px rgba(255,255,255,1)) drop-shadow(0 0 28px rgba(255,255,255,0.4)); stroke-width: 3.5px; }
-    100% { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); stroke-width: 2.5px; }
-  }
-
-  /* Ripple ring — added via JS */
-  .node-ripple {
-    fill: none;
-    stroke: rgba(255,255,255,0.5);
-    stroke-width: 1;
-    animation: ripple-out 1.8s ease-out infinite;
-    pointer-events: none;
-  }
-
-  @keyframes ripple-out {
-    0%   { r: 0;  opacity: 0.7; }
-    100% { r: 28px; opacity: 0; }
-  }
-
-  /* ── HUD overlays ── */
-  .hud {
-    position: absolute;
-    font-family: var(--mono);
-    font-size: 9px;
-    color: var(--ink-faint);
-    letter-spacing: 0.15em;
-    pointer-events: none;
-  }
-
-  .hud-tl { top: 80px; left: 40px; }
-  .hud-tr { top: 80px; right: 40px; text-align: right; }
-  .hud-bl { bottom: 40px; left: 40px; }
-  .hud-br { bottom: 40px; right: 40px; text-align: right; }
-
-  .hud-coord {
-    display: block;
-    margin-bottom: 4px;
-  }
-
-  /* ── LEGEND ── */
-  .legend {
-    position: absolute;
-    bottom: 80px;
-    left: 40px;
+  .hero-left {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-  }
-
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 8px;
-    letter-spacing: 0.15em;
-    color: var(--ink-dim);
-  }
-
-  .legend-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .legend-line {
-    width: 24px;
-    height: 1px;
-    flex-shrink: 0;
-    border-top: 1px dashed;
-  }
-
-  /* ── TOOLTIP ── */
-  #tooltip {
-    position: fixed;
-    background: rgba(4,4,10,0.95);
-    border: 1px solid var(--survey-dim);
-    padding: 16px 20px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
-    z-index: 300;
-    max-width: 280px;
-  }
-
-  #tooltip.visible { opacity: 1; }
-
-  .tooltip-name {
-    font-size: 11px;
-    color: var(--survey);
-    letter-spacing: 0.15em;
-    margin-bottom: 8px;
-  }
-
-  .tooltip-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 20px;
-    font-size: 8px;
-    color: var(--ink-dim);
-    letter-spacing: 0.1em;
-    margin-bottom: 3px;
-  }
-
-  .tooltip-row span:last-child { color: var(--ink); }
-
-  .tooltip-collections {
-    margin-top: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  /* ── Collection node popup card ── */
-  .collection-card {
-    position: fixed;
-    z-index: 200;
-    min-width: 240px;
-    max-width: 300px;
-    background: rgba(10,9,8,0.97);
-    border: 1px solid var(--grid);
-    padding: 0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
-    backdrop-filter: blur(12px);
-  }
-
-  .collection-card.visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .collection-card-stripe {
-    height: 3px;
-    width: 100%;
-  }
-
-  .collection-card-body {
-    padding: 14px 16px 16px;
-  }
-
-  .collection-card-eyebrow {
-    font-family: var(--mono);
-    font-size: 7px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
-
-  .collection-card-title {
-    font-family: var(--mono);
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    color: var(--paper);
-    margin-bottom: 10px;
-    line-height: 1.3;
-  }
-
-  .collection-card-desc {
-    font-family: var(--sans);
-    font-size: 10px;
-    color: var(--ink-faint);
-    line-height: 1.6;
-    margin-bottom: 12px;
-  }
-
-  .collection-card-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .collection-card-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .collection-card-stat-label {
-    font-family: var(--mono);
-    font-size: 7px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-  }
-
-  .collection-card-stat-value {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.06em;
-  }
-
-  .collection-card-link {
-    display: block;
-    font-family: var(--mono);
-    font-size: 8px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    text-decoration: none;
-    padding: 6px 10px;
-    border: 1px solid;
-    text-align: center;
-    transition: opacity 0.15s;
-    opacity: 0.8;
-  }
-
-  .collection-card-link:hover { opacity: 1; }
-
-  .tooltip-tag {
-    font-size: 7px;
-    letter-spacing: 0.1em;
-    padding: 2px 6px;
-    border: 1px solid var(--survey-dim);
-    color: var(--survey);
-    text-transform: uppercase;
-  }
-
-  .tooltip-affinity-tag {
-    border-color: rgba(122,158,232,0.3);
-    color: var(--node-artblocks);
-  }
-
-  .tooltip-affinity-tag.photo {
-    border-color: rgba(122,232,196,0.3);
-    color: var(--node-photography);
-  }
-
-  .tooltip-affinity-tag.human {
-    border-color: rgba(232,122,158,0.3);
-    color: var(--node-human);
-  }
-
-  /* ── SECTIONS ── */
-  section {
-    padding: 100px 0;
+    justify-content: flex-end;
+    padding: 120px 48px 80px;
     position: relative;
   }
 
-  .section-header {
-    padding: 0 80px 60px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--grid-bright);
-    margin-bottom: 60px;
-  }
-
-  .section-eyebrow {
-    font-size: 8px;
-    letter-spacing: 0.35em;
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
     color: var(--accent);
-    margin-bottom: 8px;
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: fadeUp 1s ease 0.3s forwards;
+  }
+
+  .hero-title {
+    font-family: var(--serif);
+    font-size: clamp(72px, 8vw, 130px);
+    font-weight: 300;
+    line-height: 0.9;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 40px;
+    opacity: 0;
+    animation: fadeUp 1.1s ease 0.5s forwards;
+  }
+
+  .hero-title em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-statement {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 300;
+    font-style: italic;
+    line-height: 1.7;
+    max-width: 420px;
+    color: #4a4540;
+    border-left: 1px solid var(--accent);
+    padding-left: 20px;
+    margin-bottom: 64px;
+    opacity: 0;
+    animation: fadeUp 1.1s ease 0.8s forwards;
+  }
+
+  .hero-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--warm-mid);
+    opacity: 0;
+    animation: fadeUp 1s ease 1.1s forwards;
+  }
+
+  .hero-right {
+    position: relative;
+    overflow: hidden;
+    background: var(--ink);
+  }
+
+  .hero-right-inner {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #1a1510 0%, #2d2820 50%, #0e0d0b 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /* Richter-esque abstract shape */
+  .hero-abstract {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+
+  .hero-abstract::before {
+    content: none;
+  }
+
+  .hero-abstract::after {
+    content: none;
+  }
+
+  .hero-caption {
+    position: absolute;
+    bottom: 32px;
+    right: 40px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+  }
+
+  .scroll-indicator {
+    position: absolute;
+    bottom: 48px;
+    left: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: fadeUp 1s ease 1.5s forwards;
+  }
+
+  .scroll-line {
+    width: 40px;
+    height: 1px;
+    background: var(--ink);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scroll-line::after {
+    content: '';
+    position: absolute;
+    left: -100%;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--accent);
+    animation: scanLine 2s ease 2s infinite;
+  }
+
+  .scroll-text {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--warm-mid);
+  }
+
+  /* ── DIVIDER ── */
+  .section-divider {
+    height: 1px;
+    background: var(--grid);
+    margin: 0 48px;
+  }
+
+  /* ── BIO ── */
+  .bio-section {
+    padding: 120px 48px;
+    display: grid;
+    grid-template-columns: 200px 1fr 320px;
+    gap: 80px;
+    align-items: start;
+  }
+
+  .bio-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--warm-mid);
+    padding-top: 8px;
+  }
+
+  .bio-text {
+    font-family: var(--serif);
+    font-size: 22px;
+    font-weight: 300;
+    line-height: 1.65;
+    color: var(--ink);
+  }
+
+  .bio-text p + p { margin-top: 1.4em; }
+
+  .bio-sidebar {
+    border-top: 1px solid var(--grid);
+    padding-top: 24px;
+  }
+
+  .bio-sidebar-item {
+    margin-bottom: 28px;
+  }
+
+  .bio-sidebar-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .bio-sidebar-value {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+
+  /* ── COLLECTIONS INTRO ── */
+  .collections-header {
+    padding: 100px 48px 60px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--grid);
   }
 
   .section-title {
     font-family: var(--serif);
-    font-size: 48px;
+    font-size: clamp(48px, 5vw, 80px);
     font-weight: 300;
     line-height: 1;
-    color: var(--ink);
+    letter-spacing: -0.02em;
   }
 
-  .section-title em {
-    font-style: italic;
-    color: var(--survey);
-  }
-
-  .section-meta {
-    font-size: 9px;
-    letter-spacing: 0.15em;
-    color: var(--ink-faint);
-    text-align: right;
-  }
-
-  /* ── ELEVATION SECTION ── */
-  #elevation {
-    background: var(--deep);
-  }
-
-  /* ── Selected collector card above terrain ── */
-  #selected-card {
-    display: none;
-    position: relative;
-    z-index: 10;
-    margin: 0;
-    padding: 20px 80px;
-    background: rgba(14,13,11,0.95);
-    border-bottom: 1px solid var(--grid);
-    backdrop-filter: blur(8px);
-  }
-
-  #selected-card.visible { display: block; }
-
-  .selected-card-inner {
-    display: grid;
-    grid-template-columns: 220px 1fr 80px;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .selected-card-name {
+  .section-count {
     font-family: var(--mono);
     font-size: 11px;
-    color: var(--survey);
-    letter-spacing: 0.1em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .selected-card-eyebrow {
-    font-family: var(--mono);
-    font-size: 8px;
-    color: var(--ink-faint);
     letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-bottom: 6px;
+    color: var(--warm-mid);
   }
 
-  .selected-card-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
+  /* ── COLLECTION BLOCK ── */
+  .collection {
+    padding: 80px 48px;
+    border-bottom: 1px solid var(--grid);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: start;
+    position: relative;
+    transition: background 0.4s;
   }
 
-  .selected-card-dismiss {
+  .collection:hover {
+    background: rgba(139, 58, 42, 0.02);
+  }
+
+  .collection-year {
+    position: absolute;
+    top: 80px;
+    right: 48px;
     font-family: var(--mono);
     font-size: 9px;
-    color: var(--ink-faint);
-    letter-spacing: 0.1em;
-    cursor: pointer;
+    letter-spacing: 0.2em;
+    color: var(--warm-mid);
     text-transform: uppercase;
-    text-align: right;
-    padding: 4px 0;
-    transition: color 0.15s;
   }
 
-  .selected-card-dismiss:hover { color: var(--survey); }
+  .collection-index {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
 
-  .elevation-grid {
-    padding: 0 80px;
+  .collection-title {
+    font-family: var(--serif);
+    font-size: clamp(36px, 4vw, 64px);
+    font-weight: 300;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+
+  .collection-medium {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 300;
+    font-style: italic;
+    color: var(--warm-mid);
+    margin-bottom: 32px;
+  }
+
+  .collection-desc {
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 300;
+    line-height: 1.75;
+    color: #3d3830;
+    margin-bottom: 40px;
+    max-width: 480px;
+  }
+
+  .collection-links {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .link-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: 2px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .link-primary:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .link-primary::after {
+    content: '↗';
+    font-size: 11px;
+  }
+
+  .edition-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--paper);
+    background: var(--ink);
+    padding: 4px 10px;
+    display: inline-block;
+  }
+
+  .sold-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 9px;
+    display: inline-block;
+  }
+
+  /* Collection right side: image grid */
+  .collection-grid {
     display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+  }
+
+  .collection-grid.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .collection-img {
+    aspect-ratio: 1;
+    overflow: hidden;
+    background: #2a2520;
+    position: relative;
+  }
+
+  .collection-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: saturate(0.85);
+    transition: filter 0.5s, transform 0.8s cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+
+  .collection-img:hover img {
+    filter: saturate(1);
+    transform: scale(1.03);
+  }
+
+  .collection-img-label {
+    position: absolute;
+    bottom: 8px;
+    left: 10px;
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  /* Placeholder color blocks when images not available */
+  .color-block {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+  }
+
+  /* ── COLLECTORS SECTION ── */
+  .collectors-section {
+    padding: 120px 80px;
+    background: var(--ink);
+    color: var(--paper);
+    border-top: 1px solid rgba(242,239,233,0.08);
+  }
+
+  .collectors-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 64px;
+  }
+
+  .collectors-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-light);
+    margin-bottom: 12px;
+  }
+
+  .collectors-title {
+    font-family: var(--serif);
+    font-size: clamp(36px, 5vw, 60px);
+    font-weight: 300;
+    line-height: 1.1;
+    color: var(--paper);
+    margin: 0;
+  }
+
+  .collectors-title em {
+    font-style: italic;
+    color: rgba(242,239,233,0.5);
+  }
+
+  .collectors-meta {
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(242,239,233,0.4);
+    line-height: 1.8;
+  }
+
+  /* Stats row */
+  .collectors-stats {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 72px;
+    padding: 32px 0;
+    border-top: 1px solid rgba(242,239,233,0.08);
+    border-bottom: 1px solid rgba(242,239,233,0.08);
+  }
+
+  .collectors-stat {
+    flex: 1;
+    text-align: center;
+  }
+
+  .collectors-stat-div {
+    width: 1px;
+    height: 40px;
+    background: rgba(242,239,233,0.1);
+  }
+
+  .collectors-stat-n {
+    font-family: var(--serif);
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 300;
+    color: var(--paper);
+    letter-spacing: -0.01em;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .collectors-stat-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.35);
+  }
+
+  /* Depth bars */
+  .collectors-depth {
+    margin-bottom: 72px;
+  }
+
+  .collectors-depth-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.3);
+    margin-bottom: 20px;
+  }
+
+  .collectors-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .collectors-bar-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 40px;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .collectors-bar-name {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: rgba(242,239,233,0.5);
+    text-align: right;
+  }
+
+  .collectors-bar-track {
+    height: 2px;
+    background: rgba(242,239,233,0.06);
+    position: relative;
+    overflow: visible;
+  }
+
+  .collectors-bar-fill {
+    height: 100%;
+    transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .collectors-bar-count {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: rgba(242,239,233,0.3);
+  }
+
+  /* Deep collectors */
+  .collectors-deep {
+    margin-bottom: 64px;
+  }
+
+  .collectors-deep-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.3);
+    margin-bottom: 24px;
+  }
+
+  .collectors-deep-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 2px;
   }
 
-  .elevation-missing {
+  .collectors-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 0 14px;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid rgba(242,239,233,0.06);
   }
 
-  .elevation-missing-tag {
-    font-family: var(--mono);
-    font-size: 8px;
-    letter-spacing: 0.12em;
-    padding: 3px 8px;
-    border: 1px solid;
-    text-decoration: none;
-    text-transform: uppercase;
-    opacity: 0.7;
-    transition: opacity 0.15s;
-  }
-
-  .elevation-missing-tag:hover { opacity: 1; }
-
-  .elevation-missing-tag::before {
-    content: '+ ';
-    opacity: 0.5;
-  }
-
-  .elevation-row {
+  .collectors-list-row {
     display: grid;
-    grid-template-columns: 200px 1fr 80px;
+    grid-template-columns: 130px 1fr 160px;
     align-items: center;
     gap: 20px;
-    padding: 16px 0 0;
-    border-bottom: 1px solid var(--grid);
-    cursor: pointer;
-    transition: background 0.15s;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(242,239,233,0.06);
   }
 
-  .elevation-row:hover {
-    background: rgba(255,255,255,0.02);
-  }
-
-  .elevation-row.is-self {
-    border-left: 2px solid var(--node-mintface);
-    padding-left: 12px;
-    background: rgba(232,201,122,0.03);
-  }
-
-  .elevation-collector {
+  .collectors-list-addr {
+    font-family: var(--mono);
     font-size: 10px;
-    color: var(--survey);
-    letter-spacing: 0.1em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    letter-spacing: 0.08em;
+    color: rgba(242,239,233,0.5);
   }
 
-  .elevation-bar-wrap {
-    position: relative;
-    height: 24px;
+  .collectors-list-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .cdot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .collectors-list-n {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.25);
+    text-align: right;
+  }
+
+  .collectors-deep-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--paper);
+    margin-bottom: 12px;
+  }
+
+  .collectors-deep-n {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.25);
+  }
+
+  /* CTA */
+  .collectors-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding-top: 48px;
+    border-top: 1px solid rgba(242,239,233,0.08);
+  }
+
+  .collectors-cta-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    font-family: var(--sans);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--paper);
+    text-decoration: none;
+    padding: 16px 32px;
+    border: 1px solid rgba(242,239,233,0.2);
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .collectors-cta-link:hover {
+    border-color: var(--accent-light);
+    color: var(--accent-light);
+  }
+
+  .collectors-cta-arrow {
+    font-size: 18px;
+    transition: transform 0.2s;
+  }
+
+  .collectors-cta-link:hover .collectors-cta-arrow { transform: translateX(4px); }
+
+  .collectors-cta-sub {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.25);
+  }
+
+  /* Mobile */
+  @media (max-width: 768px) {
+    .collectors-section { padding: 80px 24px; }
+    .collectors-header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .collectors-meta { text-align: left; }
+    .collectors-stats { flex-wrap: wrap; gap: 24px; }
+    .collectors-stat-div { display: none; }
+    .collectors-stat { flex: 1 1 40%; text-align: left; }
+    .collectors-bar-row { grid-template-columns: 110px 1fr 32px; }
+    .collectors-deep-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── PROVENANCE TABLE ── */
+  .provenance-section {
+    padding: 100px 48px;
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .provenance-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 64px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 32px;
+  }
+
+  .provenance-title {
+    font-family: var(--serif);
+    font-size: clamp(40px, 4vw, 64px);
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: var(--paper);
+  }
+
+  .provenance-intro {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 300;
+    font-style: italic;
+    color: rgba(242,239,233,0.5);
+    max-width: 320px;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  .provenance-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .provenance-table thead tr {
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+  }
+
+  .provenance-table th {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.4);
+    text-align: left;
+    padding: 0 0 16px;
+    font-weight: 400;
+  }
+
+  .provenance-table th:not(:first-child) { padding-left: 32px; }
+
+  .provenance-table tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    transition: background 0.2s;
+  }
+
+  .provenance-table tbody tr:hover {
     background: rgba(255,255,255,0.03);
   }
 
-  .elevation-bar {
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-    transition: width 1s ease;
+  .provenance-table td {
+    padding: 20px 0;
+    vertical-align: top;
   }
 
-  .elevation-fill {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to right,
-      var(--elevation-low),
-      var(--elevation-mid),
-      var(--elevation-high),
-      var(--elevation-peak)
-    );
+  .provenance-table td:not(:first-child) { padding-left: 32px; }
+
+  .prov-name {
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--paper);
   }
 
-  .elevation-peaks {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: flex-end;
+  .prov-medium {
+    font-family: var(--serif);
+    font-size: 12px;
+    font-style: italic;
+    color: rgba(242,239,233,0.4);
+    margin-top: 2px;
   }
 
-  .elevation-peak-mark {
-    width: 2px;
-    background: rgba(122,232,160,0.6);
-    margin-right: 1px;
+  .prov-year {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(242,239,233,0.5);
   }
 
-  .elevation-collections {
-    position: absolute;
-    inset: 0;
-    display: flex;
+  .prov-chain {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: rgba(242,239,233,0.5);
   }
 
-  .elevation-segment {
-    height: 100%;
-    border-right: 1px solid rgba(0,0,0,0.4);
-  }
-
-  .elevation-pct {
+  .prov-address {
     font-family: var(--mono);
     font-size: 9px;
-    color: var(--ink-dim);
-    text-align: right;
-    white-space: nowrap;
+    color: var(--accent-light);
+    word-break: break-all;
+    max-width: 200px;
   }
 
-  .elevation-pct.complete {
-    color: var(--elevation-peak);
+  .prov-address a {
+    color: inherit;
+    text-decoration: none;
   }
 
-  /* Elevation axis */
-  .elevation-axis {
-    padding: 20px 80px 0;
+  .prov-address a:hover { text-decoration: underline; }
+
+  .prov-editions {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(242,239,233,0.6);
+  }
+
+  /* ── EXHIBITIONS ── */
+  .exhibitions-section {
+    padding: 100px 48px;
     display: grid;
-    grid-template-columns: 200px 1fr 80px;
-    gap: 20px;
+    grid-template-columns: 280px 1fr;
+    gap: 80px;
   }
 
-  .elevation-axis-labels {
+  .exhibitions-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--warm-mid);
+    padding-top: 8px;
+  }
+
+  .exhibition-list {
+    list-style: none;
+  }
+
+  .exhibition-item {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 32px;
+    padding: 28px 0;
+    border-bottom: 1px solid var(--grid);
+    align-items: baseline;
+  }
+
+  .exhibition-year {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
+
+  .exhibition-name {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 300;
+  }
+
+  .exhibition-details {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 300;
+    font-style: italic;
+    color: var(--warm-mid);
+    margin-top: 4px;
+  }
+
+  /* ── ACQUIRE SECTION ── */
+  .acquire-section {
+    padding: 120px 80px;
+    background: var(--paper);
+    border-top: 1px solid rgba(14,13,11,0.08);
+  }
+
+  .acquire-header {
     display: flex;
     justify-content: space-between;
-    font-size: 7px;
-    color: var(--ink-faint);
+    align-items: flex-end;
+    margin-bottom: 64px;
+  }
+
+  .acquire-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .acquire-title {
+    font-family: var(--serif);
+    font-size: clamp(36px, 5vw, 60px);
+    font-weight: 300;
+    line-height: 1.1;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  .acquire-title em {
+    font-style: italic;
+    color: var(--warm-mid);
+  }
+
+  .acquire-meta {
+    font-family: var(--mono);
+    font-size: 10px;
     letter-spacing: 0.1em;
+    color: var(--warm-mid);
+    text-align: right;
+    line-height: 1.8;
   }
 
-  /* ── AFFINITY SECTION ── */
-  #affinity {
-    background: var(--surface);
-  }
-
-  .affinity-panels {
-    padding: 0 80px;
+  .acquire-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 2px;
+    margin-bottom: 40px;
   }
 
-  .affinity-panel {
-    background: rgba(255,255,255,0.02);
-    padding: 40px;
-    border: 1px solid var(--grid);
+  .acquire-card {
+    border: 1px solid rgba(14,13,11,0.08);
+    padding: 24px;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    text-decoration: none;
+    color: var(--ink);
+    transition: border-color 0.2s, background 0.2s;
     position: relative;
+    overflow: hidden;
   }
 
-  .affinity-panel::before {
+  .acquire-card::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 2px;
   }
 
-  .affinity-panel.artblocks::before { background: var(--node-artblocks); }
-  .affinity-panel.photography::before { background: var(--node-photography); }
-  .affinity-panel.human::before { background: var(--node-human); }
-
-  .affinity-panel-eyebrow {
-    font-size: 7px;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
+  .acquire-card:hover {
+    border-color: rgba(14,13,11,0.25);
+    background: rgba(242,239,233,0.5);
   }
 
-  .affinity-panel.artblocks .affinity-panel-eyebrow { color: var(--node-artblocks); }
-  .affinity-panel.photography .affinity-panel-eyebrow { color: var(--node-photography); }
-  .affinity-panel.human .affinity-panel-eyebrow { color: var(--node-human); }
-
-  .affinity-panel-title {
-    font-family: var(--serif);
-    font-size: 28px;
-    font-weight: 300;
+  .acquire-card-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: var(--ink);
     margin-bottom: 4px;
-    line-height: 1.1;
   }
 
-  .affinity-panel-sub {
-    font-size: 8px;
-    color: var(--ink-faint);
-    letter-spacing: 0.1em;
-    margin-bottom: 28px;
+  .acquire-card-medium {
+    font-family: var(--serif);
+    font-size: 12px;
+    font-style: italic;
+    color: var(--warm-mid);
+    margin-bottom: 20px;
   }
 
-  .affinity-stat {
-    display: flex;
-    justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--grid);
-    font-size: 9px;
-  }
-
-  .affinity-stat-label { color: var(--ink-faint); letter-spacing: 0.1em; }
-  .affinity-stat-value { color: var(--survey); }
-
-  .affinity-collectors {
-    margin-top: 24px;
+  .acquire-card-stats {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-height: 260px;
-    overflow-y: auto;
+    gap: 10px;
+    margin-top: auto;
   }
 
-  .affinity-collectors::-webkit-scrollbar { width: 2px; }
-  .affinity-collectors::-webkit-scrollbar-track { background: transparent; }
-  .affinity-collectors::-webkit-scrollbar-thumb { background: var(--survey-dim); }
+  .acquire-card-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
 
-  .affinity-collector-row {
+  .acquire-card-stat-label {
+    font-family: var(--mono);
+    font-size: 7px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--warm-mid);
+  }
+
+  .acquire-card-stat-value {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+  }
+
+  .acquire-card-stat-value.loading {
+    color: var(--warm-mid);
+    font-size: 10px;
+  }
+
+  .acquire-card-cta {
+    margin-top: 20px;
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .acquire-card:hover .acquire-card-cta { opacity: 1; }
+
+  .acquire-loading {
+    grid-column: 1 / -1;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--warm-mid);
+    padding: 40px 0;
+    text-align: center;
+  }
+
+  .acquire-footer-note {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--warm-mid);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
-    font-size: 8px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(14,13,11,0.06);
   }
 
-  .affinity-collector-name {
-    color: var(--survey);
-    letter-spacing: 0.1em;
+  .acquire-see-all {
+    color: var(--ink);
+    text-decoration: none;
+    letter-spacing: 0.12em;
+    transition: color 0.15s;
+  }
+
+  .acquire-see-all:hover { color: var(--accent); }
+
+  @media (max-width: 1024px) { .acquire-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px)  { .acquire-grid { grid-template-columns: 1fr; } .acquire-section { padding: 80px 24px; } .acquire-header { flex-direction: column; align-items: flex-start; gap: 16px; } .acquire-meta { text-align: left; } }
+
+  /* ── PHILOSOPHY / FOOTER ── */
+  .philosophy-section {
+    padding: 120px 48px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    background: #0e0d0b;
+    color: var(--paper);
+  }
+
+  .philosophy-quote {
+    font-family: var(--serif);
+    font-size: clamp(32px, 4vw, 58px);
+    font-weight: 300;
+    font-style: italic;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--paper);
+  }
+
+  .philosophy-quote span {
+    color: var(--accent-light);
+  }
+
+  .philosophy-right {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .philosophy-connect {
+    margin-bottom: 48px;
+  }
+
+  .philosophy-connect-label {
+    font-family: var(--mono);
     font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.4);
+    margin-bottom: 20px;
   }
 
-  .affinity-collector-depth {
+  .connect-links {
     display: flex;
-    gap: 3px;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .depth-pip {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
+  .connect-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--paper);
+    text-decoration: none;
+    transition: color 0.2s;
   }
 
-  .depth-pip.artblocks { background: var(--node-artblocks); }
-  .depth-pip.photo { background: var(--node-photography); }
-  .depth-pip.human { background: var(--node-human); }
-  .depth-pip.empty { background: var(--grid-bright); }
+  .connect-link:hover { color: var(--accent-light); }
 
-  /* ── LOADING STATE ── */
-  .loading-overlay {
+  .connect-link-icon {
+    width: 20px;
+    height: 1px;
+    background: currentColor;
+    display: inline-block;
+    transition: width 0.3s;
+  }
+
+  .connect-link:hover .connect-link-icon { width: 32px; }
+
+  .footer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 48px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    margin-top: 48px;
+  }
+
+  .footer-wordmark {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(242,239,233,0.3);
+  }
+
+  .footer-rights {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: rgba(242,239,233,0.2);
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.4; }
+    50% { transform: scale(1.1) translate(3%, -2%); opacity: 0.55; }
+  }
+
+  @keyframes scanLine {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  /* ── SCROLL REVEAL ── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.9s ease, transform 0.9s ease;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── CATALOG NAV ── */
+  .catalog-nav {
+    padding: 40px 48px;
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--grid);
+    overflow-x: auto;
+  }
+
+  .catalog-tab {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--warm-mid);
+    padding: 10px 24px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    white-space: nowrap;
+  }
+
+  .catalog-tab:hover, .catalog-tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ── BURGER MENU ── */
+  .nav-burger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    padding: 4px;
+    background: none;
+    border: none;
+  }
+
+  .nav-burger span {
+    display: block;
+    width: 22px;
+    height: 1.5px;
+    background: var(--ink);
+    transition: transform 0.3s, opacity 0.3s;
+  }
+
+  .nav-burger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+  .nav-burger.open span:nth-child(2) { opacity: 0; }
+  .nav-burger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+  .mobile-menu {
+    display: none;
     position: fixed;
-    inset: 0;
-    background: var(--void);
-    z-index: 500;
-    display: flex;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--paper);
+    z-index: 99;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 24px;
-    transition: opacity 0.8s;
+    gap: 40px;
   }
 
-  .loading-overlay.hidden {
-    opacity: 0;
-    pointer-events: none;
-  }
+  .mobile-menu.open { display: flex; }
 
-  .loading-title {
-    font-family: var(--serif);
-    font-size: 32px;
-    font-weight: 300;
-    color: var(--survey);
-    letter-spacing: 0.1em;
-  }
-
-  .loading-status {
-    font-size: 9px;
-    color: var(--ink-faint);
-    letter-spacing: 0.2em;
+  .mobile-menu a {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.25em;
     text-transform: uppercase;
-    height: 20px;
+    color: var(--ink);
+    text-decoration: none;
   }
 
-  .loading-progress {
-    width: 200px;
-    height: 1px;
-    background: var(--grid-bright);
-    position: relative;
-    overflow: hidden;
-  }
+  .mobile-menu a:hover { color: var(--accent); }
 
-  .loading-bar {
-    position: absolute;
-    top: 0; left: 0;
-    height: 100%;
-    background: var(--survey);
-    width: 0%;
-    transition: width 0.4s ease;
-  }
+  /* ── RESPONSIVE ── */
 
-  /* survey crosshair on loading */
-  .loading-cross {
-    position: relative;
-    width: 40px;
-    height: 40px;
-    margin-bottom: 8px;
-  }
-
-  .loading-cross::before,
-  .loading-cross::after {
-    content: '';
-    position: absolute;
-    background: var(--survey-dim);
-  }
-
-  .loading-cross::before { width: 1px; height: 100%; left: 50%; }
-  .loading-cross::after { width: 100%; height: 1px; top: 50%; }
-
-  .loading-cross-inner {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    border: 1px solid var(--survey);
-    border-radius: 50%;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    animation: pulse 1.5s ease infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-    50% { transform: translate(-50%, -50%) scale(2); opacity: 0.3; }
-  }
-
-  /* ── MOBILE ── */
-  @media (max-width: 768px) {
-    nav { padding: 16px 20px; }
+  @media (max-width: 900px) {
     .nav-links { display: none; }
-    .section-header { padding: 0 24px 40px; }
-    .section-title { font-size: 32px; }
-    .elevation-grid { padding: 0 24px; }
-    .elevation-axis { padding: 20px 24px 0; }
-    .affinity-panels { padding: 0 24px; grid-template-columns: 1fr; }
-    .hud-tr, .hud-bl, .hud-br { display: none; }
-    .legend { left: 20px; bottom: 60px; }
-  }
+    .nav-burger { display: flex; }
 
-  /* ── SEARCH BAR ── */
-  .terrain-search-wrap {
-    position: relative;
-    padding: 80px 80px 0;
-    background: var(--void);
-    z-index: 10;
-  }
+    nav { padding: 20px 24px; }
 
-  .search-input {
-    width: 100%;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid var(--grid-bright);
-    border-left: 2px solid var(--survey-dim);
-    color: var(--ink);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    padding: 14px 120px 14px 20px;
-    outline: none;
-    transition: border-color 0.2s, background 0.2s;
-  }
+    .hero { grid-template-columns: 1fr; min-height: auto; }
+    .hero-left { padding: 100px 24px 60px; }
+    .hero-right { height: 50vw; }
 
-  .search-input::placeholder {
-    color: var(--ink-faint);
-    letter-spacing: 0.15em;
-  }
+    .bio-section { grid-template-columns: 1fr; gap: 40px; padding: 80px 24px; }
+    .bio-label { display: none; }
 
-  .search-input:focus {
-    border-color: var(--survey);
-    background: rgba(255,255,255,0.04);
-  }
+    .collections-header { padding: 60px 24px 40px; flex-direction: column; gap: 12px; }
 
-  .search-clear {
-    position: absolute;
-    right: 88px;
-    top: 50%;
-    transform: translateY(calc(-50% + 40px));
-    background: none;
-    border: none;
-    color: var(--ink-faint);
-    font-family: var(--mono);
-    font-size: 16px;
-    cursor: pointer;
-    padding: 4px 10px;
-    display: none;
-    line-height: 1;
-  }
+    .collection { grid-template-columns: 1fr; gap: 40px; padding: 60px 24px; }
+    .collection-year { top: 24px; right: 24px; }
 
-  .search-clear:hover { color: var(--survey); }
+    .provenance-section { padding: 80px 24px; overflow: hidden; }
+    .provenance-header { flex-direction: column; gap: 20px; }
+    .provenance-intro { text-align: left; max-width: 100%; }
 
-  .search-count {
-    position: absolute;
-    right: 88px;
-    top: 50%;
-    transform: translateY(calc(-50% + 40px));
-    font-size: 8px;
-    color: var(--ink-faint);
-    letter-spacing: 0.15em;
-    pointer-events: none;
-  }
+    .provenance-table { table-layout: fixed; width: 100%; }
+    .provenance-table th,
+    .provenance-table td { padding-left: 0 !important; padding-right: 8px; }
+    .provenance-table th:nth-child(3),
+    .provenance-table td:nth-child(3),
+    .provenance-table th:nth-child(4),
+    .provenance-table td:nth-child(4) { display: none; }
+    .prov-address { max-width: 100%; font-size: 8px; word-break: break-all; overflow-wrap: anywhere; }
 
+    .exhibitions-section { grid-template-columns: 1fr; gap: 40px; padding: 80px 24px; }
 
-  /* ── SEARCH DROPDOWN ── */
-  .search-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: rgba(8,8,18,0.98);
-    border: 1px solid var(--grid-bright);
-    border-top: none;
-    max-height: 320px;
-    overflow-y: auto;
-    z-index: 500;
-    display: none;
-  }
+    .philosophy-section { grid-template-columns: 1fr; padding: 80px 24px; }
 
-  .search-dropdown.visible { display: block; }
+    .catalog-nav { padding: 24px; }
 
-  .search-dropdown::-webkit-scrollbar { width: 2px; }
-  .search-dropdown::-webkit-scrollbar-track { background: transparent; }
-  .search-dropdown::-webkit-scrollbar-thumb { background: var(--survey-dim); }
+    .section-divider { margin: 0 24px; }
 
-  .dropdown-item {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 20px;
-    cursor: pointer;
-    border-bottom: 1px solid var(--grid);
-    transition: background 0.1s;
-  }
-
-  .dropdown-item:last-child { border-bottom: none; }
-
-  .dropdown-item:hover,
-  .dropdown-item.active {
-    background: rgba(196,168,130,0.08);
-  }
-
-  .dropdown-item-name {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--survey);
-    letter-spacing: 0.1em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .dropdown-item-name em {
-    font-style: normal;
-    color: var(--ink);
-    background: rgba(196,168,130,0.2);
-    padding: 0 2px;
-  }
-
-  .dropdown-item-tags {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-
-  .dropdown-tag {
-    font-size: 7px;
-    letter-spacing: 0.1em;
-    padding: 2px 5px;
-    border: 1px solid;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .dropdown-empty {
-    padding: 16px 20px;
-    font-size: 9px;
-    color: var(--ink-faint);
-    letter-spacing: 0.15em;
-  }
-  .elevation-row.hidden { display: none; }
-  .elevation-row.search-highlight {
-    background: rgba(196,168,130,0.1);
-    border-left: 2px solid var(--survey);
-    padding-left: 12px;
-  }
-
-  @media (max-width: 768px) {
-    .terrain-search-wrap { padding: 70px 24px 0; }
-    .search-clear { right: 32px; }
-    .search-count { right: 32px; }
+    .scroll-indicator { display: none; }
   }
 </style>
 </head>
 <body>
 
-<!-- LOADING -->
-<div class="loading-overlay" id="loader">
-  <div class="loading-cross"><div class="loading-cross-inner"></div></div>
-  <div class="loading-title">Surveying the Terrain</div>
-  <div class="loading-status" id="loader-status">Initialising...</div>
-  <div class="loading-progress"><div class="loading-bar" id="loader-bar"></div></div>
-</div>
-
-<!-- TOOLTIP -->
-<div id="tooltip">
-  <div class="tooltip-name" id="tt-name"></div>
-  <div class="tooltip-row"><span>MintFace holds</span><span id="tt-mf-count"></span></div>
-  <div class="tooltip-row"><span>Collections</span><span id="tt-collections"></span></div>
-  <div class="tooltip-row" id="tt-affinity-row" style="display:none"><span>Affinity</span><span id="tt-affinity"></span></div>
-  <div class="tooltip-collections" id="tt-tags"></div>
+<!-- MOBILE MENU -->
+<div class="mobile-menu" id="mobileMenu">
+  <a href="#bio" onclick="closeMobileMenu()">Biography</a>
+  <a href="#collections" onclick="closeMobileMenu()">Collections</a>
+  <a href="#provenance" onclick="closeMobileMenu()">Provenance</a>
+  <a href="#collectors" onclick="closeMobileMenu()">Collectors</a>
+  <a href="#exhibitions" onclick="closeMobileMenu()">Exhibitions</a>
+  <a href="#acquire" onclick="closeMobileMenu()">Acquire</a>
 </div>
 
 <!-- NAV -->
 <nav>
-  <a href="https://mintface.art" class="nav-brand">
-    <span class="nav-brand-title">MintFace</span>
-    <span class="nav-brand-sub">Collector Terrain</span>
-  </a>
+  <a href="#" class="nav-logo">MintFace</a>
   <ul class="nav-links">
-    <li><a href="#terrain">Terrain</a></li>
-    <li><a href="#elevation">Elevation</a></li>
-
+    <li><a href="#bio">Biography</a></li>
+    <li><a href="#collections">Collections</a></li>
+    <li><a href="#provenance">Provenance</a></li>
+    <li><a href="#collectors">Collectors</a></li>
+    <li><a href="#exhibitions">Exhibitions</a></li>
+    <li><a href="#acquire">Acquire</a></li>
   </ul>
-  <div class="nav-right">
-    <button id="wallet-btn" onclick="connectWallet()">Connect Wallet</button>
-  </div>
+  <button class="nav-burger" id="burgerBtn" aria-label="Menu" onclick="toggleMobileMenu()">
+    <span></span><span></span><span></span>
+  </button>
 </nav>
 
-<!-- ── SEARCH BAR ── -->
-<div class="terrain-search-wrap">
-  <input
-    class="search-input terrain-search-input"
-    id="collector-search"
-    type="text"
-    placeholder="Search collector — ENS name or wallet address..."
-    oninput="filterElevation(this.value)"
-    onkeydown="searchKeyNav(event)"
-    autocomplete="off"
-    spellcheck="false"
-  />
-  <span class="search-count" id="search-count"></span>
-  <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
-  <div class="search-dropdown" id="search-dropdown"></div>
-</div>
+<script>
+  function toggleMobileMenu() {
+    const menu = document.getElementById('mobileMenu');
+    const btn = document.getElementById('burgerBtn');
+    menu.classList.toggle('open');
+    btn.classList.toggle('open');
+  }
+  function closeMobileMenu() {
+    document.getElementById('mobileMenu').classList.remove('open');
+    document.getElementById('burgerBtn').classList.remove('open');
+  }
+</script>
 
-<!-- ── TERRAIN ── -->
-<!-- ── COLLECTION NODE CARD ── -->
-<div class="collection-card" id="collection-card"
-  onmouseenter="clearTimeout(state && state.cardHideTimer)"
-  onmouseleave="state.cardHideTimer = setTimeout(hideCollectionCard, 150)">
-  <div class="collection-card-stripe" id="cc-stripe"></div>
-  <div class="collection-card-body">
-    <div class="collection-card-eyebrow" id="cc-eyebrow"></div>
-    <div class="collection-card-title" id="cc-title"></div>
-    <div class="collection-card-desc" id="cc-desc"></div>
-    <div class="collection-card-stats">
-      <div class="collection-card-stat">
-        <div class="collection-card-stat-label">Artworks</div>
-        <div class="collection-card-stat-value" id="cc-artworks"></div>
-      </div>
-      <div class="collection-card-stat">
-        <div class="collection-card-stat-label">Chain</div>
-        <div class="collection-card-stat-value" id="cc-chain"></div>
-      </div>
-      <div class="collection-card-stat">
-        <div class="collection-card-stat-label">Medium</div>
-        <div class="collection-card-stat-value" id="cc-medium"></div>
-      </div>
-      <div class="collection-card-stat">
-        <div class="collection-card-stat-label">Collectors</div>
-        <div class="collection-card-stat-value" id="cc-collectors"></div>
-      </div>
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-left">
+    <div class="hero-eyebrow">New Zealand — 2021–2025</div>
+    <h1 class="hero-title">Mint<br><em>Face</em></h1>
+    <p class="hero-statement">
+      As we live on the edge of believability,<br>
+      MintFace conjures placeholders<br>to guide our way.
+    </p>
+    <div class="hero-meta">Painting · AI · Generative · Photography · Illustration · Sculpture</div>
+
+    <div class="scroll-indicator">
+      <div class="scroll-line"></div>
+      <span class="scroll-text">Scroll</span>
     </div>
-    <a class="collection-card-link" id="cc-link" href="#" target="_blank" rel="noopener">View Collection →</a>
   </div>
+  <div class="hero-right">
+    <div class="hero-right-inner">
+      <img src="ASSETS_BASE/images/doppelganger.jpg" alt="Doppelgänger" style="width:100%;height:100%;object-fit:cover;filter:saturate(0.9);display:block;">
+      <div class="hero-caption">Doppelgänger — Painting</div>
+    </div>
+  </div>
+</section>
+
+<!-- BIO -->
+<section class="bio-section reveal" id="bio">
+  <div class="bio-label">Biography</div>
+  <div class="bio-text">
+    <p>MintFace is a cryptoartist and founder of The Line... a physical and digital home for tokenized art in New Zealand. Formed at the intersection of grief, fatherhood, and the arrival of the blockchain as a new kind of permanence, the name carries a single insistence: that connection is both subject and method.</p>
+    <p>The practice emerged in 2021 from the edge of the world, during a period of stillness that made the distance between people feel both more painful and more worth recording. What began as an attempt to leave a trail... coordinates, timestamps, inscriptions... became something larger: a decade-long corridor that the work keeps building.</p>
+    <p>MintFace refuses a signature look. The output moves between painting, photography, AI collaboration, and generative editions... not as versatility, but as insistence that no single medium is large enough to hold what needs saying.</p>
+  </div>
+  <div class="bio-sidebar">
+    <div class="bio-sidebar-item">
+      <div class="bio-sidebar-label">Practice</div>
+      <div class="bio-sidebar-value">Multi-disciplinary — Painting, Photography, Generative Art, AI, Illustration</div>
+    </div>
+    <div class="bio-sidebar-item">
+      <div class="bio-sidebar-label">Active Since</div>
+      <div class="bio-sidebar-value">2021</div>
+    </div>
+    <div class="bio-sidebar-item">
+      <div class="bio-sidebar-label">Exhibitions</div>
+      <div class="bio-sidebar-value">NFT NYC 2024, The Line Gallery, New Zealand</div>
+    </div>
+    <div class="bio-sidebar-item">
+      <div class="bio-sidebar-label">Collections Held</div>
+      <div class="bio-sidebar-value">Spain, Belgium, Switzerland, Germany, Australia, United States</div>
+    </div>
+    <div class="bio-sidebar-item">
+      <div class="bio-sidebar-label">Blockchain</div>
+      <div class="bio-sidebar-value">Ethereum (ERC-721 / ERC-1155), Bitcoin Ordinals</div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<div class="collections-header" id="collections">
+  <h2 class="section-title">Collections<br><em style="font-style:italic;color:var(--accent)">2021–2025</em></h2>
+  <span class="section-count">15 Collections · 500+ Works</span>
 </div>
 
-<!-- ── SELECTED COLLECTOR CARD ── -->
-<div id="selected-card">
-  <div class="selected-card-inner">
-    <div>
-      <div class="selected-card-eyebrow">Selected Collector</div>
-      <div class="selected-card-name" id="sc-name">—</div>
+<!-- CATALOG NAV -->
+<div class="catalog-nav">
+  <button class="catalog-tab active" onclick="filterCollection('all', this)">All Works</button>
+  <button class="catalog-tab" onclick="filterCollection('painting', this)">Painting</button>
+  <button class="catalog-tab" onclick="filterCollection('ai', this)">AI</button>
+  <button class="catalog-tab" onclick="filterCollection('generative', this)">Generative</button>
+  <button class="catalog-tab" onclick="filterCollection('illustration', this)">Illustration</button>
+  <button class="catalog-tab" onclick="filterCollection('photography', this)">Photography</button>
+  <button class="catalog-tab" onclick="filterCollection('sculpture', this)">Sculpture</button>
+</div>
+
+<!-- COLLECTION: ARTIFICIAL FLOWERS -->
+<article class="collection reveal" data-type="painting" id="painting">
+  <div>
+    <div class="collection-year">2025</div>
+    <div class="collection-index">01 / 15</div>
+    <h2 class="collection-title">Artificial<br>Flowers</h2>
+    <div class="collection-medium">Painting / AI / Augmented Reality</div>
+    <p class="collection-desc">
+      Hand-painted flowers worked to completion, then offered to AI as source material. The machine returns its vision — displayed on the physical canvas via augmented reality. It asks the only question that matters: who is the student, and who is the master?
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      Each physical painting becomes a trigger for the tokenized work to play. Collectors standing before the canvas experience both visions simultaneously, comparing and contrasting the two.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">22 × 1/1</span>
     </div>
+    <div class="collection-links">
+      <a href="https://opensea.io/collection/artificial-flower" class="link-primary" target="_blank">View on OpenSea</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-grid three-col">
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery09/b7b4367e.jpg" alt="Daffodil Season" loading="lazy"><div class="collection-img-label">Daffodil Season</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery09/8887f92f.jpg" alt="Banana Zone" loading="lazy"><div class="collection-img-label">Banana Zone</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery09/a8f10857.jpg" alt="Flax Feeding Season" loading="lazy"><div class="collection-img-label">Flax Feeding</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery09/e2f8cc11.jpg" alt="Re: Growth" loading="lazy"><div class="collection-img-label">Re: Growth</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery09/1692b1e2.jpg" alt="Solar Reaching" loading="lazy"><div class="collection-img-label">Solar Reaching</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery09/af_sixth.jpg" alt="Artificial Flowers" loading="lazy"><div class="collection-img-label">Garden Study</div></div>
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: PATRIMORA -->
+<article class="collection reveal" data-type="generative" id="generative">
+  <div>
+    <div class="collection-year">2025</div>
+    <div class="collection-index">02 / 15</div>
+    <h2 class="collection-title">Patrimora</h2>
+    <div class="collection-medium">Generative Art — On-chain</div>
+    <p class="collection-desc">
+      Inspired by <em>senbazuru</em> — the Japanese tradition of folding 1,000 origami cranes. Named for a word MintFace coined: <em>patrimora</em> — a legacy delayed in its realization. A memorial to a son growing up without a father, through the motif of cranes.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      Cranes are thought to represent long life. The name means an inheritance delayed by history, culture, or generation — something owed, not yet received.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">1/1 + 469 editions</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://patrimora.com" class="link-primary" target="_blank">patrimora.com</a>
+      <a href="https://highlight.xyz/mint/ethereum:0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8" class="link-primary" target="_blank">Mint</a>
+    </div>
+  </div>
+  <div>
+    <div style="width:100%;overflow:hidden;">
+      <img src="ASSETS_BASE/images/patrimora-overview.jpg" alt="Patrimora — full collection" loading="lazy" style="width:100%;display:block;filter:saturate(0.95);">
+    </div>
+    <div style="margin-top: 16px; font-family: var(--mono); font-size: 9px; color: var(--warm-mid); letter-spacing: 0.15em;">
+      Traits: Twombly · Rothko · Pollock · Mintface · Tricksta · Firstlady
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: TWO BURDENS -->
+<article class="collection reveal" data-type="painting">
+  <div>
+    <div class="collection-year">2024</div>
+    <div class="collection-index">03 / 15</div>
+    <h2 class="collection-title">Two<br>Burdens</h2>
+    <div class="collection-medium">Oil on Canvas — 36 works</div>
+    <p class="collection-desc">
+      The inner and outer burdens we all carry. The surface is worked over and over — adding, subtracting, adding, subtracting — until an intensity presents itself. Influenced by Richter's later squeegee works, but the mindset here is active, not indifferent.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      Acquired by collectors in Spain, Belgium, Switzerland, Australia and the USA. Exhibited at NFT NYC 2024 and The Line, New Zealand.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">36 × 1/1</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://twoburdens.com" class="link-primary" target="_blank">twoburdens.com</a>
+      <a href="https://opensea.io/collection/two-burdens" class="link-primary" target="_blank">OpenSea</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-grid three-col">
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery03/a2db99b9.jpg" alt="Beyond the Meadow" loading="lazy"><div class="collection-img-label">Beyond the Meadow</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery03/55a2a111.jpg" alt="Cascade" loading="lazy"><div class="collection-img-label">Cascade</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery03/9696fbca.jpg" alt="Laceration" loading="lazy"><div class="collection-img-label">Laceration</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery03/5818dd6f.jpg" alt="Salvation" loading="lazy"><div class="collection-img-label">Salvation</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery03/92558574.jpg" alt="The Grotto" loading="lazy"><div class="collection-img-label">The Grotto</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery03/b82e657c.jpg" alt="Untitled III" loading="lazy"><div class="collection-img-label">Untitled III</div></div>
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: RECURSIVE MIND -->
+<article class="collection reveal" data-type="illustration" id="illustration">
+  <div>
+    <div class="collection-year">2023</div>
+    <div class="collection-index">04 / 15</div>
+    <h2 class="collection-title">Recursive<br>Mind</h2>
+    <div class="collection-medium">Illustration — Photoshop — Bitcoin Ordinals</div>
+    <p class="collection-desc">
+      Endless thought patterns looping to infinity. Pixels pushed until they break. What remains becomes the art — a study in deletion, removal, and sitting with what is left after the pressure finally subsides.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      No AI. All hand-drawn in Photoshop since age 13. Inscribed as Ordinals on Bitcoin — an expensive act that binds their longevity to Bitcoin's own.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">13 × 1/1</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://rrrecursive.com" class="link-primary" target="_blank">rrrecursive.com</a>
+      <a href="https://gamma.io/ordinals/collections/recursive-mind/items" class="link-primary" target="_blank">View on Gamma</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-grid">
+      <div class="collection-img" style="aspect-ratio: 4/3;"><img src="ASSETS_BASE/images/gallery04/3f9f3457.jpg" alt="The Crucible" loading="lazy"><div class="collection-img-label">The Crucible</div></div>
+      <div class="collection-img" style="aspect-ratio: 4/3;"><img src="ASSETS_BASE/images/gallery04/86a24aee.jpg" alt="Lost in Sound" loading="lazy"><div class="collection-img-label">Lost in Sound</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery04/1a982a3c.jpg" alt="Dark Summer" loading="lazy"><div class="collection-img-label">Dark Summer</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery04/a264f33e.jpg" alt="Day at the Park" loading="lazy"><div class="collection-img-label">Day at the Park</div></div>
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: GEODETICA -->
+<article class="collection reveal" data-type="ai" id="neural">
+
+  <div>
+    <div class="collection-year">2022</div>
+    <div class="collection-index">05 / 15</div>
+    <h2 class="collection-title">Geodetica</h2>
+    <div class="collection-medium">AI — Midjourney — 100 works</div>
+    <p class="collection-desc">
+      Geodetica documents the shortest visual path between human and machine — the geodetic line of creative intent. Each of 100 unique works traces a direct route from imagination to output, without the weight of physical media to negotiate.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      Made entirely in Midjourney at a time when the technology was new and the conversation between artist and algorithm felt genuinely uncharted. Sold out.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">100 × 1/1</span>
+      <span class="sold-badge" style="margin-left:8px;">Sold Out</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://opensea.io/collection/geodetica" class="link-primary" target="_blank">View on OpenSea</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-grid three-col">
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery05/f5877be5.jpg" alt="Strength at its Core" loading="lazy"><div class="collection-img-label">Strength at its Core</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery05/821e3f06.jpg" alt="Look Around You" loading="lazy"><div class="collection-img-label">Look Around You</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery05/7106056c.jpg" alt="A Son Points Something Out" loading="lazy"><div class="collection-img-label">A Son Points Out</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery05/73ac44e8.jpg" alt="Face to Face with a Geodetic Moment" loading="lazy"><div class="collection-img-label">Face to Face</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery05/5185aed4.jpg" alt="Goodnight Moon" loading="lazy"><div class="collection-img-label">Goodnight Moon</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery05/f5877be5.jpg" alt="Geodetica" loading="lazy"></div>
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: ROADS & RIVERS -->
+<article class="collection reveal" data-type="photography" id="photography">
+  <div>
+    <div class="collection-year">2022</div>
+    <div class="collection-index">06 / 15</div>
+    <h2 class="collection-title">Roads<br>& Rivers</h2>
+    <div class="collection-medium">Photography — Aerial — North Island, NZ</div>
+    <p class="collection-desc">
+      Roads are for travelling. Rivers go with the flow. When the two overlap, you get to decide which way you go. MintFace drove the North Island of New Zealand — post-pandemic, little traffic, the freedom of open roads — photographing bridges.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      Seven of the 36 bridges were washed away in Cyclone Gabrielle, February 2023. The collection sparked conversations about memory, crossing, where people were going and why it mattered. Featured in the NZ Herald.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">36 × 1/1</span>
+      <span class="sold-badge" style="margin-left:8px;">Sold Out</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://opensea.io/collection/roads-and-rivers" class="link-primary" target="_blank">View on OpenSea</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-grid">
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery13/243509e4.jpg" alt="Bridge #2" loading="lazy"><div class="collection-img-label">Bridge #2</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery13/fb579ba6.jpg" alt="Bridge #5" loading="lazy"><div class="collection-img-label">Bridge #5</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery13/d442fe2f.jpg" alt="Bridge #9" loading="lazy"><div class="collection-img-label">Bridge #9</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery13/daa11871.jpg" alt="Bridge #22" loading="lazy"><div class="collection-img-label">Bridge #22</div></div>
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: GEODETIC MOMENTS -->
+<article class="collection reveal" data-type="photography">
+  <div>
+    <div class="collection-year">2021</div>
+    <div class="collection-index">07 / 15</div>
+    <h2 class="collection-title">Geodetic<br>Moments</h2>
+    <div class="collection-medium">Photography — Pukekura Hill, Taradale</div>
+    <p class="collection-desc">
+      A study of one location, one hill, walked at different times of day and night throughout 2021. Each photograph is accompanied by metadata — direction faced, time of day, notable objects — recorded permanently on the blockchain.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      A record of physical presence, left for a son to find. If he finds the geodetic marker on Pukekura Hill, he can probably find me.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">100 × 1/1</span>
+      <span class="sold-badge" style="margin-left:8px;">Sold Out</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://opensea.io/collection/geodetic-moments" class="link-primary" target="_blank">View on OpenSea</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-grid three-col">
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery07/20552bb7.jpg" alt="Geodetic Moments #1" loading="lazy"><div class="collection-img-label">#1</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery07/0bfffe62.jpg" alt="Geodetic Moments #23" loading="lazy"><div class="collection-img-label">#23</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery07/1c3a5565.jpg" alt="Geodetic Moments #77" loading="lazy"><div class="collection-img-label">#77</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery07/0fa10346.jpg" alt="Geodetic Moments #84" loading="lazy"><div class="collection-img-label">#84</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery07/bee0a1ed.jpg" alt="Geodetic Moments #87" loading="lazy"><div class="collection-img-label">#87</div></div>
+      <div class="collection-img"><img src="ASSETS_BASE/images/gallery07/5f266be2.jpg" alt="Geodetic Moments #96" loading="lazy"><div class="collection-img-label">#96</div></div>
+    </div>
+  </div>
+</article>
+
+<!-- COLLECTION: GEODETIC HOME -->
+<article class="collection reveal" data-type="sculpture" id="sculpture">
+  <div>
+    <div class="collection-year">2025</div>
+    <div class="collection-index">08 / 15</div>
+    <h2 class="collection-title">Geodetic<br>Home</h2>
+    <div class="collection-medium">Paint on Timber Sculpture — Cultural Object</div>
+    <p class="collection-desc">
+      A geodetic sculpture exhibited at the opening of The Line Gallery, May 2025. Visitors were invited to mark-make directly on its surface — signatures, drawings, names accumulated over weeks. The structure invited people to pause around it, as one does at a New Zealand summit marker.
+    </p>
+    <p class="collection-desc" style="margin-top:16px;">
+      In a time where algorithms divide, the geodetic sculpture brought people together on a single surface — and reminded us how to speak in person again.
+    </p>
+    <div style="margin-bottom:24px;">
+      <span class="edition-badge">15 editions</span>
+      <span class="sold-badge" style="margin-left:8px;">Sold Out</span>
+    </div>
+    <div class="collection-links">
+      <a href="https://opensea.io/collection/geodetic" class="link-primary" target="_blank">View on OpenSea</a>
+    </div>
+  </div>
+  <div>
+    <div class="collection-img" style="aspect-ratio:3/4;">
+      <img src="ASSETS_BASE/images/geodetic-home.jpg" alt="Geodetic Home — The Line Gallery 2025" loading="lazy" style="width:100%;height:100%;object-fit:cover;filter:saturate(0.9);">
+    </div>
+    <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--warm-mid);letter-spacing:0.15em;line-height:1.8;">
+      Signed by: frens · family · mayor hopefuls · kids after school<br>
+      officer of court · tattoo artist · gang affiliates · a chef<br>
+      tourists · farmers · security officers · businesspeople · artists
+    </div>
+  </div>
+</article>
+
+<!-- PROVENANCE -->
+
+<!-- ACQUIRE -->
+<section class="acquire-section reveal" id="acquire">
+  <div class="acquire-header">
     <div>
-      <div id="sc-bar-wrap" class="elevation-bar-wrap" style="margin:0">
-        <div class="elevation-bar" id="sc-bar" style="width:0%">
-          <div class="elevation-fill"></div>
-          <div class="elevation-collections" id="sc-segs"></div>
+      <div class="acquire-eyebrow">Available Works</div>
+      <h2 class="acquire-title">Acquire<br><em>Art</em></h2>
+    </div>
+    <div class="acquire-meta">Floor prices and available editions<br>updated live from OpenSea</div>
+  </div>
+
+  <div class="acquire-grid" id="acquire-grid">
+    <!-- Cards injected by JS -->
+    <div class="acquire-loading">Loading market data…</div>
+  </div>
+
+  <div class="acquire-footer-note">
+    All works tokenized on-chain. Ownership transfers without intermediaries.
+    <a href="https://opensea.io/mintface" target="_blank" class="acquire-see-all">View all on OpenSea →</a>
+  </div>
+</section>
+
+<!-- ── COLLECTORS ── -->
+<section class="collectors-section reveal" id="collectors">
+
+  <div class="collectors-header">
+    <div>
+      <div class="collectors-eyebrow">Collector Terrain</div>
+      <h2 class="collectors-title">The People<br><em>Who Hodl</em></h2>
+    </div>
+    <div class="collectors-meta">
+      <div>409 patrons · 8 collections · 5 years</div>
+          </div>
+  </div>
+
+  <!-- Stat bar -->
+  <div class="collectors-stats">
+    <div class="collectors-stat">
+      <div class="collectors-stat-n">409</div>
+      <div class="collectors-stat-label">Collectors</div>
+    </div>
+    <div class="collectors-stat-div"></div>
+    <div class="collectors-stat">
+      <div class="collectors-stat-n">112</div>
+      <div class="collectors-stat-label">Hold Multiple Collections</div>
+    </div>
+    <div class="collectors-stat-div"></div>
+    <div class="collectors-stat">
+      <div class="collectors-stat-n">8</div>
+      <div class="collectors-stat-label">Collections</div>
+    </div>
+    <div class="collectors-stat-div"></div>
+    <div class="collectors-stat">
+      <div class="collectors-stat-n">2021</div>
+      <div class="collectors-stat-label">First Collector</div>
+    </div>
+  </div>
+
+  <!-- Collection depth bars -->
+  <div class="collectors-depth">
+    <div class="collectors-depth-label">Collection depth — holders per series</div>
+    <div class="collectors-bars">
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Geodetic Moments</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:37%;background:rgba(168,232,122,0.5)"></div>
         </div>
+        <div class="collectors-bar-count">69</div>
       </div>
-      <div class="selected-card-tags" id="sc-tags"></div>
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Editions</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:85%;background:rgba(122,196,232,0.5)"></div>
+        </div>
+        <div class="collectors-bar-count">159</div>
+      </div>
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Geodetica</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:52%;background:rgba(122,232,196,0.5)"></div>
+        </div>
+        <div class="collectors-bar-count">98</div>
+      </div>
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Roads &amp; Rivers</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:44%;background:rgba(232,168,122,0.5)"></div>
+        </div>
+        <div class="collectors-bar-count">83</div>
+      </div>
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Patrimora</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:20%;background:rgba(122,158,232,0.5)"></div>
+        </div>
+        <div class="collectors-bar-count">38</div>
+      </div>
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Two Burdens</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:7%;background:rgba(232,201,122,0.5)"></div>
+        </div>
+        <div class="collectors-bar-count">14</div>
+      </div>
+      <div class="collectors-bar-row">
+        <div class="collectors-bar-name">Artificial Flowers</div>
+        <div class="collectors-bar-track">
+          <div class="collectors-bar-fill" style="width:2%;background:rgba(232,122,158,0.5)"></div>
+        </div>
+        <div class="collectors-bar-count">4</div>
+      </div>
     </div>
-    <div>
-      <div class="elevation-pct" id="sc-pct">—</div>
-      <div class="selected-card-dismiss" id="sc-dismiss" onclick="deselect()">× clear</div>
-    </div>
-  </div>
-</div>
-
-<section id="terrain">
-  <svg id="terrain-svg"></svg>
-
-  <div class="hud hud-tl">
-    <span class="hud-coord" id="hud-collectors">— collectors</span>
-    <span class="hud-coord" id="hud-collections">— collections</span>
-
   </div>
 
-  <div class="hud hud-tr">
-    <span class="hud-coord">36°51'S 174°45'E</span>
-    <span class="hud-coord">Auckland — NZ</span>
-    <span class="hud-coord" id="hud-time"></span>
+  <!-- CTA -->
+  <div class="collectors-cta">
+    <a href="https://collectors.mintface.art" target="_blank" class="collectors-cta-link">
+      <span class="collectors-cta-label">Explore Collector Terrain</span>
+      <span class="collectors-cta-arrow">→</span>
+    </a>
+    <div class="collectors-cta-sub">Interactive map · Connect your wallet · See your place in the terrain</div>
   </div>
 
-  <div class="hud hud-br">
-    <span class="hud-coord">Survey Grid 1:2400</span>
-    <span class="hud-coord">WGS84 / UTM Zone 60S</span>
-  </div>
-
-  <div class="legend">
-    <div class="legend-item">
-      <div class="legend-dot" style="background:var(--node-mintface)"></div>
-      MintFace collector
-    </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="width:12px;height:12px;background:none;border:2px solid var(--survey)"></div>
-      Collection anchor
-    </div>
-
-  </div>
 </section>
 
-<!-- ── ELEVATION ── -->
-<section id="elevation">
-  <div class="section-header">
-    <div>
-      <div class="section-eyebrow">Vertical Set</div>
-      <h2 class="section-title">Elevation<br><em>Profile</em></h2>
-    </div>
-    <div class="section-meta">
-      <div>Completion = 1 work from each collection</div>
-      <div>8 collections · Full ridge = 100%</div>
-    </div>
+<section class="provenance-section reveal" id="provenance">
+  <div class="provenance-header">
+    <h2 class="provenance-title">Provenance<br><em style="font-style:italic">& Chain Records</em></h2>
+    <p class="provenance-intro">All artworks are tokenized. Tokens create transferrable ownership rights — without the need for a gallery.</p>
   </div>
+  <table class="provenance-table">
+    <thead>
+      <tr>
+        <th>Collection</th>
+        <th>Year</th>
+        <th>Editions</th>
+        <th>Chain</th>
+        <th>Contract</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><div class="prov-name">Artificial Flowers</div><div class="prov-medium">Neural Painting / AR</div></td>
+        <td class="prov-year">2025</td>
+        <td class="prov-editions">21 × 1/1</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0xd64ac59835a9951f34472239ba70b44c5bebe90d" target="_blank">0xd64ac5…be90d</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">FROGDNA</div><div class="prov-medium">Painting</div></td>
+        <td class="prov-year">2025</td>
+        <td class="prov-editions">1 work · 88 editions</td>
+        <td class="prov-chain">Bitcoin · Ordinals</td>
+        <td class="prov-address"><a href="https://tokenscan.io/asset/FROGDNA" target="_blank">FROGDNA</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Patrimora</div><div class="prov-medium">Generative Art</div></td>
+        <td class="prov-year">2025</td>
+        <td class="prov-editions">1/1 + 469 editions</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8" target="_blank">0xEabffd…502d8</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">ID Please</div><div class="prov-medium">Illustration</div></td>
+        <td class="prov-year">2025</td>
+        <td class="prov-editions">1/1 + 328 editions</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0x33fd426905f149f8376e227d0c9d3340aad17af1" target="_blank">0x33fd42…7af1</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Recursive Mind</div><div class="prov-medium">Illustration</div></td>
+        <td class="prov-year">2023–25</td>
+        <td class="prov-editions">13 × 1/1</td>
+        <td class="prov-chain">Bitcoin · Ordinals</td>
+        <td class="prov-address"><a href="https://gamma.io/mintface/collected?sort=oldest_listings" target="_blank">146688a…b95i0</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Two Burdens</div><div class="prov-medium">Painting</div></td>
+        <td class="prov-year">2024</td>
+        <td class="prov-editions">36 × 1/1</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0xe1d1f99505a13d20b25d5ef32280771d7eb5ed09" target="_blank">0xe1d1f9…ed09</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetic World</div><div class="prov-medium">Pure AI</div></td>
+        <td class="prov-year">2023</td>
+        <td class="prov-editions">95 × 1/1</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0xe16c77a770c6de5439f617e6e2f9fd46bb15d396" target="_blank">0xe16c77…d396</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Roads & Rivers</div><div class="prov-medium">Photography</div></td>
+        <td class="prov-year">2022</td>
+        <td class="prov-editions">36 × 1/1 + 162 ed.</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0x18bd004e13258f569cedfbb537ba329e4730ee67" target="_blank">0x18bd00…ee67</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetic On-Chain</div><div class="prov-medium">Illustration</div></td>
+        <td class="prov-year">2022</td>
+        <td class="prov-editions">5 works · 2×100 ed.</td>
+        <td class="prov-chain">Ethereum · ERC-1155</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4" target="_blank">0x7b5ccc…ce4</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetica</div><div class="prov-medium">Pure AI</div></td>
+        <td class="prov-year">2022</td>
+        <td class="prov-editions">100 × 1/1 · Sold Out</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933" target="_blank">0xf6f44f…2933</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetic Memory</div><div class="prov-medium">Photography</div></td>
+        <td class="prov-year">2022</td>
+        <td class="prov-editions">1 work · 823 editions</td>
+        <td class="prov-chain">Ethereum · ERC-1155</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0xa81f8083072f192948dcae38da5c0c6073da979c" target="_blank">0xa81f80…979c</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetic Illusions</div><div class="prov-medium">Neural Painting</div></td>
+        <td class="prov-year">2022</td>
+        <td class="prov-editions">87 × 1/1</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0x38bae13b27222900c32ec28ab28b54cd61196045" target="_blank">0x38bae1…6045</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetic Moments</div><div class="prov-medium">Photography</div></td>
+        <td class="prov-year">2021</td>
+        <td class="prov-editions">100 × 1/1 · Sold Out</td>
+        <td class="prov-chain">Ethereum · ERC-1155</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0x495f947276749ce646f68ac8c248420045cb7b5e" target="_blank">0x495f94…b7b5e</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">1/1s on Foundation</div><div class="prov-medium">Photography</div></td>
+        <td class="prov-year">2021</td>
+        <td class="prov-editions">7 × 1/1</td>
+        <td class="prov-chain">Ethereum · ERC-721</td>
+        <td class="prov-address"><a href="https://foundation.app/@mintface" target="_blank">Foundation</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">Geodetic Home</div><div class="prov-medium">Sculpture</div></td>
+        <td class="prov-year">2025</td>
+        <td class="prov-editions">1 work · 15 ed. · Sold Out</td>
+        <td class="prov-chain">Ethereum · ERC-1155</td>
+        <td class="prov-address"><a href="https://etherscan.io/address/0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4" target="_blank">0x7b5ccc…ce4</a></td>
+      </tr>
+      <tr>
+        <td><div class="prov-name">City vs Nature</div><div class="prov-medium">Photography — Genesis</div></td>
+        <td class="prov-year">2021</td>
+        <td class="prov-editions">1 work · 5 editions</td>
+        <td class="prov-chain">Ethereum · ERC-1155</td>
+        <td class="prov-address"><a href="https://og.rarible.com/token/0xd07dc4262bcdbf85190c01c996b4c06a461d2430:518231" target="_blank">Rarible</a></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
 
-  <div class="elevation-axis">
-    <div></div>
-    <div class="elevation-axis-labels">
-      <span>0m</span>
-      <span>BASECAMP</span>
-      <span>RIDGE</span>
-      <span>PEAK</span>
-      <span>SUMMIT</span>
-    </div>
-    <div></div>
-  </div>
-
-  <div class="elevation-grid" id="elevation-grid">
-    <!-- Populated by JS -->
-  </div>
+<!-- EXHIBITIONS -->
+<section class="exhibitions-section reveal" id="exhibitions">
+  <div class="exhibitions-label">Exhibition<br>History</div>
+  <ul class="exhibition-list">
+    <li class="exhibition-item">
+      <div class="exhibition-year">2026</div>
+      <div>
+        <div class="exhibition-name">Artificial Flowers — The Line</div>
+        <div class="exhibition-details">The Line Gallery, New Zealand</div>
+      </div>
+    </li>
+    <li class="exhibition-item">
+      <div class="exhibition-year">2025</div>
+      <div>
+        <div class="exhibition-name">Roads & Rivers — The Line</div>
+        <div class="exhibition-details">The Line Gallery, New Zealand · September 2025 · Featured NZ Herald</div>
+      </div>
+    </li>
+    <li class="exhibition-item">
+      <div class="exhibition-year">2024</div>
+      <div>
+        <div class="exhibition-name">Two Burdens — NFT NYC</div>
+        <div class="exhibition-details">Jutta Gallery, June 2024 · US debut</div>
+      </div>
+    </li>
+    <li class="exhibition-item">
+      <div class="exhibition-year">2024</div>
+      <div>
+        <div class="exhibition-name">Two Burdens — The Studio</div>
+        <div class="exhibition-details">The Studio, Auckland, New Zealand</div>
+      </div>
+    </li>
+    <li class="exhibition-item">
+      <div class="exhibition-year">2021–</div>
+      <div>
+        <div class="exhibition-name">Tokenized Works — Ongoing</div>
+        <div class="exhibition-details">OpenSea · Foundation · Gamma · Highlight · Rarible</div>
+      </div>
+    </li>
+  </ul>
 </section>
 
 
+<!-- PHILOSOPHY + FOOTER -->
+<footer class="philosophy-section">
+  <div>
+    <p class="philosophy-quote">
+      As we live on the edge of believability, MintFace conjures <span>placeholders</span> to guide our way.
+    </p>
+  </div>
+  <div class="philosophy-right">
+    <div class="philosophy-connect">
+      <div class="philosophy-connect-label">Connect</div>
+      <div class="connect-links">
+        <a href="mailto:mintface@digitalartisteconomy.com" class="connect-link">
+          <span class="connect-link-icon"></span>
+          Email
+        </a>
+        <a href="https://x.com/mintface" class="connect-link" target="_blank">
+          <span class="connect-link-icon"></span>
+          X / Twitter
+        </a>
+        <a href="https://instagram.com/thelinegallery" class="connect-link" target="_blank">
+          <span class="connect-link-icon"></span>
+          Instagram
+        </a>
+        <a href="https://opensea.io/mintface" class="connect-link" target="_blank">
+          <span class="connect-link-icon"></span>
+          OpenSea
+        </a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-wordmark">MintFace Art — mintface.art</div>
+      <div class="footer-rights">Rights are for the untokenized.</div>
+    </div>
+  </div>
+</footer>
 
 <script>
-// ═══════════════════════════════════════════════════════════════
-// DATA — Contract addresses & collection config
-// ═══════════════════════════════════════════════════════════════
-
-const MINTFACE_COLLECTIONS = [
-  { id: 'artificial-flowers', name: 'Artificial Flowers', year: 2025, contract: '0xd64ac59835a9951f34472239ba70b44c5bebe90d', chain: 'ethereum', artworks: 21,  medium: 'Neural Painting',  desc: 'Hand-painted works merged with AI and augmented reality — flowers that exist between the physical and the digital.' },
-  { id: 'patrimora',          name: 'Patrimora',          year: 2025, contract: '0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8', chain: 'ethereum', artworks: 469, medium: 'Generative Art',   desc: 'A generative exploration of inherited identity — 469 unique works derived from a single patrilineal algorithm.' },
-  { id: 'two-burdens',        name: 'Two Burdens',        year: 2024, contract: '0xe1d1f99505a13d20b25d5ef32280771d7eb5ed09', chain: 'ethereum', artworks: 36,  medium: 'Painting',        desc: 'Large-scale oil paintings confronting the weight of modern existence — exhibited at NFT NYC 2024 and The Line, NZ.' },
-  { id: 'recursive-mind',     name: 'Recursive Mind',     year: 2023, contract: null,                                           chain: 'bitcoin',  artworks: 8,   medium: 'Illustration',    desc: 'Eight hand-drawn illustrations inscribed on Bitcoin Ordinals — a meditation on self-referential thought.' },
-  { id: 'geodetica',          name: 'Geodetica',          year: 2022, contract: '0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933', chain: 'ethereum', artworks: 100, medium: 'Pure AI',          desc: '100 AI-generated works mapping imaginary geological survey territories — the first MintFace AI collection.' },
-  { id: 'roads-rivers',       name: 'Roads & Rivers',     year: 2022, contract: '0x18bd004e13258f569cedfbb537ba329e4730ee67', chain: 'ethereum', artworks: 40,  medium: 'Photography',     desc: '40 photographs tracing the infrastructural veins of the landscape — roads and waterways as abstract systems.' },
-  { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum', artworks: 100, medium: 'Photography',     desc: '100 photographic moments captured across New Zealand terrain — the founding MintFace collection.' },
-  { id: 'geodetic-home',      name: 'Editions',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum', artworks: 5,   medium: 'Editions',       desc: 'Five on-chain edition works — geodetic survey markers tokenized as ERC-1155 collectibles on Ethereum.' },
-];
-
-// Per-collection color + OpenSea URL
-const COLLECTION_META = {
-  'artificial-flowers': { color: '#e87a9e', bg: 'rgba(232,122,158,0.15)', border: 'rgba(232,122,158,0.4)', url: 'https://opensea.io/collection/artificial-flower' },
-  'patrimora':          { color: '#7a9ee8', bg: 'rgba(122,158,232,0.15)', border: 'rgba(122,158,232,0.4)', url: 'https://patrimora.com' },
-  'two-burdens':        { color: '#e8c97a', bg: 'rgba(232,201,122,0.15)', border: 'rgba(232,201,122,0.4)', url: 'https://opensea.io/collection/two-burdens' },
-  'recursive-mind':     { color: '#c47ae8', bg: 'rgba(196,122,232,0.15)', border: 'rgba(196,122,232,0.4)', url: 'https://gamma.io/ordinals/collections/recursive-mind/items' },
-  'geodetica':          { color: '#7ae8c4', bg: 'rgba(122,232,196,0.15)', border: 'rgba(122,232,196,0.4)', url: 'https://opensea.io/collection/geodetica' },
-  'roads-rivers':       { color: '#e8a87a', bg: 'rgba(232,168,122,0.15)', border: 'rgba(232,168,122,0.4)', url: 'https://opensea.io/collection/roads-and-rivers' },
-  'geodetic-moments':   { color: '#a8e87a', bg: 'rgba(168,232,122,0.15)', border: 'rgba(168,232,122,0.4)', url: 'https://opensea.io/collection/geodetic-moments' },
-  'geodetic-home':      { color: '#7ac4e8', bg: 'rgba(122,196,232,0.15)', border: 'rgba(122,196,232,0.4)', url: 'https://opensea.io/collection/geodetic' },
-};
-
-// Short display names for tags
-const COLLECTION_SHORT = {
-  'artificial-flowers': 'Artificial Flowers',
-  'patrimora':          'Patrimora',
-  'two-burdens':        'Two Burdens',
-  'recursive-mind':     'Recursive Mind',
-  'geodetica':          'Geodetica',
-  'roads-rivers':       'Roads & Rivers',
-  'geodetic-moments':   'Moments',
-  'geodetic-home':      'Editions',
-};
-
-// Art Blocks Curated — factory contract + key project IDs
-// These project IDs map to token ranges: projectId * 1,000,000 to (projectId+1)*1,000,000 - 1
-const AB_FACTORY = '0xa7d8d9ef8d8ce8992df33d8b8cf4aebabd5bd270';
-const AB_V3 = '0x99a9b7c1116f9ceeb1652de04d5969cce509b069';
-const AB_CURATED_SLUGS = [
-  'chromie-squiggle-by-snowfro',
-  'fidenza-by-tyler-hobbs',
-  'ringers-by-dmitri-cherniak',
-  'archetype-by-kjetil-golid',
-  'meridian-by-matt-deslauriers',
-  'algobots-by-stina-jones',
-  'subscapes-by-matt-deslauriers',
-  'geometry-runners-by-rich-lord',
-  'incomplete-control-by-aaron-penne',
-  'elevated-deconstructions-by-luxpris',
-  'loom-by-anna-lucia',
-  'cellular-automata-by-hideo-matsuzaki',
-  'flow-field-by-phil-linden',
-  'bytebeats-by-dan-gries',
-  'vvttmmnn-by-alexis-andre',
-  'the-wrong-crowd-by-simon-de-la-rouviere',
-  'century-rings-by-snowfro',
-  'overnight-by-casey-reas',
-  'memories-of-qilin-by-emily-xie',
-  'grids-by-zeblocks',
-];
-
-// Apocalypse contracts
-const APOCALYPSE_CONTRACTS = [
-  { name: 'Meetings',    contract: '0x2318954d3add6175545d482bd648093740201805' },
-  { name: 'The Origins', contract: '0x486f86728ba157cbd21f71cee7ff895e2892f9d6' },
-  { name: 'Oversoul',    contract: '0x8fb9051d464ef8fed7832e05bacc675699a84401' },
-];
-
-// Underscore contracts
-const UNDERSCORE_CONTRACTS = [
-  { name: 'Underscore 1', contract: '0x3595c12c205bcb1e1db87800084e604943ebbb47' },
-  { name: 'Underscore 2', contract: '0xea67bec2189F6bACaA974c07A922cB82cbcB7802' },
-  { name: 'Underscore 3', contract: '0xbfdb529c8abb6f81b6d14d2751fc9d8bdbcf9bd9' },
-];
-
-// Haffkta contracts
-const HAFFKTA_CONTRACTS = [
-  { name: 'Declaration of Independence', contract: '0x530e295f7226ebb8e8021f87ea6dcc0d52c6da29' },
-  { name: 'Bullpen',                      contract: '0x4365b5313efbff83e8e112a8519998e6677ebb70' },
-];
-
-// Photography icons from MintFace Private Collection list
-const PHOTO_ARTISTS = [
-  'alejandro-cartegna', 'andginja', 'andre-messina', 'ben-zank',
-  'billy-dinh', 'brian-minear', 'cath-simard', 'chi-modu',
-  'colorworks', 'cowboy-killer', 'david-loh', 'drifter-shoots',
-  'ella-morton', 'guido', 'gustavo-mondragon', 'hans-kemp',
-  'imed-kolli', 'joelle-b', 'justin-aversano', 'marat-safin',
-  'meeshuno', 'mellback', 'on-the-roofs', 'reuben-wu',
-  'roberto-alcarez', 'sergio-antoni', 'timmboslice', 'tokyoluv',
-  'tony-sellen', 'tylers-journey', 'zay-yar-lin', 'zigmarillion',
-];
-
-// ═══════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════
-
-let state = {
-  collectors: new Map(),    // wallet -> { ens, mintfaceHolds[], affinityHolds{} }
-  connectedWallet: null,
-  graphNodes: [],
-  graphLinks: [],
-};
-
-// ═══════════════════════════════════════════════════════════════
-// API HELPERS
-// ═══════════════════════════════════════════════════════════════
-
-async function openSeaFetch(path, params = {}) {
-  const qs = new URLSearchParams({ path, ...params }).toString();
-  const res = await fetch(`/api/opensea?${qs}`);
-  if (!res.ok) throw new Error(`OpenSea ${res.status}: ${path}`);
-  return res.json();
-}
-
-async function resolveENS(address) {
-  try {
-    const res = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
-    const data = await res.json();
-    return data.name || truncateAddress(address);
-  } catch {
-    return truncateAddress(address);
-  }
-}
-
-function truncateAddress(addr) {
-  if (!addr) return '—';
-  return `${addr.slice(0,6)}...${addr.slice(-4)}`;
-}
-
-// Get all NFT holders for a contract
-async function getHolders(contract, chain = 'ethereum', limit = 200) {
-  const holders = new Set();
-  let next = null;
-  let page = 0;
-  do {
-    const params = { limit: 50 };
-    if (next) params.next = next;
-    try {
-      const data = await openSeaFetch(`chain/${chain}/contract/${contract}/nfts`, params);
-      (data.nfts || []).forEach(nft => {
-        if (nft.owners) nft.owners.forEach(o => holders.add(o.address.toLowerCase()));
-      });
-      next = data.next;
-      page++;
-    } catch (e) {
-      console.warn('getHolders error:', e);
-      break;
-    }
-  } while (next && holders.size < limit && page < 10);
-  return holders;
-}
-
-// Check if a wallet holds from a list of contracts/slugs
-async function checkAffinityContracts(wallet, contracts) {
-  let count = 0;
-  const held = [];
-  for (const { name, contract } of contracts) {
-    try {
-      const data = await openSeaFetch(`chain/ethereum/account/${wallet}/nfts`, {
-        collection: contract,
-        limit: 1
-      });
-      if (data.nfts && data.nfts.length > 0) {
-        count++;
-        held.push(name);
-      }
-    } catch {}
-  }
-  return { count, held };
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DEMO DATA — used when API not yet loaded / for initial render
-// ═══════════════════════════════════════════════════════════════
-
-function generateDemoData() {
-  const names = [
-    'snowfro.eth','punk6529.eth','cozomo.eth','pranksy.eth','gmoney.eth',
-    'richerd.eth','dingaling.eth','beanie.eth','j1mmy.eth','punk4156.eth',
-    'seedphrase.eth','slimesunday.eth','hackatao.eth','xcopy.eth','pak.eth',
-    'refik.eth','tyler.eth','dmitri.eth','kjetil.eth','anna.eth',
-    '0x3f2a...b91c','0x8d4e...f22a','0x1c9b...4401','0xa77f...cc03','0x5512...de88',
+  // ── ACQUIRE — fetch floor + supply from OpenSea ──
+  const ACQUIRE_COLLECTIONS = [
+    { id: 'artificial-flowers', name: 'Artificial Flowers', medium: 'Neural Painting', slug: 'artificial-flower',     color: '#e87a9e', total: 21  },
+    { id: 'patrimora',          name: 'Patrimora',          medium: 'Generative',      slug: null, link: 'https://highlight.xyz/mint/ethereum:0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8', color: '#7a9ee8', total: 469, mintOpen: true, staticFloor: '0.03 ETH' },
+    { id: 'two-burdens',        name: 'Two Burdens',        medium: 'Painting',        slug: 'two-burdens',           color: '#e8c97a', total: 36  },
+    { id: 'recursive-mind',     name: 'Recursive Mind',     medium: 'Illustration',    slug: null,                    color: '#c47ae8', total: 8,  link: 'https://gamma.io/ordinals/collections/recursive-mind/items', staticListed: '8 available', staticFloor: '0.018 BTC' },
+    { id: 'geodetica',          name: 'Geodetica',          medium: 'Pure AI',         slug: 'geodetica',             color: '#7ae8c4', total: 100 },
+    { id: 'roads-rivers',       name: 'Roads & Rivers',     medium: 'Photography',     slug: 'roads-and-rivers',      color: '#e8a87a', total: 40  },
+    { id: 'geodetic-moments',   name: 'Moments',            medium: 'Photography',     slug: 'geodetic-moments',      color: '#a8e87a', total: 100 },
+    { id: 'geodetic-home',      name: 'Editions',           medium: 'On-chain',        slug: 'geodetic',              color: '#7ac4e8', total: 5   },
   ];
 
-  const mfCollections = MINTFACE_COLLECTIONS.map(c => c.id);
-  const collectors = new Map();
+  function renderAcquireCards(data = {}) {
+    const grid = document.getElementById('acquire-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    ACQUIRE_COLLECTIONS.forEach(col => {
+      const d = data[col.id] || {};
+      const floor = col.staticFloor ?? (d.floor != null ? (d.floor === 0 ? 'Offer' : d.floor.toFixed(3) + ' ETH') : '—');
+      const listed = col.staticListed ?? (d.listed != null ? d.listed : '—');
+      const link = col.link || `https://opensea.io/collection/${col.slug}`;
 
-  names.forEach((name, i) => {
-    const holdCount = Math.floor(Math.random() * 5) + 1;
-    const shuffled = [...mfCollections].sort(() => Math.random() - 0.5);
-    const holds = shuffled.slice(0, holdCount);
-
-    const hasAB = Math.random() > 0.5 && holds.includes('patrimora');
-    const hasPhoto = Math.random() > 0.5 && holds.includes('geodetic-moments');
-    const hasHuman = Math.random() > 0.5 && holds.includes('two-burdens');
-
-    collectors.set(name, {
-      ens: name,
-      address: `0x${Math.random().toString(16).slice(2,12)}`,
-      mintfaceHolds: holds,
-      affinityHolds: {
-        artblocks: hasAB ? Math.floor(Math.random() * 5) + 1 : 0,
-        photography: hasPhoto ? Math.floor(Math.random() * 4) + 1 : 0,
-        human: hasHuman ? Math.floor(Math.random() * 3) + 1 : 0,
-      }
+      const card = document.createElement('a');
+      card.className = 'acquire-card';
+      card.href = col.link || link;
+      card.target = '_blank';
+      card.rel = 'noopener';
+      card.innerHTML = `
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:${col.color}"></div>
+        <div class="acquire-card-name">${col.name}</div>
+        <div class="acquire-card-medium">${col.medium}</div>
+        <div class="acquire-card-stats">
+          ${col.mintOpen ? `
+          <div class="acquire-card-stat">
+            <div class="acquire-card-stat-label">Status</div>
+            <div class="acquire-card-stat-value" style="color:var(--accent)">Mint Open</div>
+          </div>
+          <div class="acquire-card-stat">
+            <div class="acquire-card-stat-label">Mint Price</div>
+            <div class="acquire-card-stat-value">${floor}</div>
+          </div>` : `
+          <div class="acquire-card-stat">
+            <div class="acquire-card-stat-label">Floor Price</div>
+            <div class="acquire-card-stat-value${floor === '—' ? ' loading' : ''}">${floor}</div>
+          </div>
+          <div class="acquire-card-stat">
+            <div class="acquire-card-stat-label">Listed</div>
+            <div class="acquire-card-stat-value${listed === '—' ? ' loading' : ''}">${typeof listed === 'string' && listed.includes('available') ? listed : listed === '—' ? listed : listed + ' available'}</div>
+          </div>`}
+          <div class="acquire-card-stat">
+            <div class="acquire-card-stat-label">Total Supply</div>
+            <div class="acquire-card-stat-value">${col.total}</div>
+          </div>
+        </div>
+        <div class="acquire-card-cta">${col.mintOpen ? 'Mint on Highlight' : col.slug ? 'View on OpenSea' : 'View on Gamma'} →</div>
+      `;
+      grid.appendChild(card);
     });
-  });
-
-  return collectors;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TERRAIN GRAPH — D3 Force
-// ═══════════════════════════════════════════════════════════════
-
-function buildGraph(collectors) {
-  const nodes = [];
-  const links = [];
-
-  // Collection anchor nodes
-  MINTFACE_COLLECTIONS.forEach((col, i) => {
-    nodes.push({
-      id: col.id,
-      type: 'collection',
-      label: col.name,
-      year: col.year,
-      r: 18,
-    });
-  });
-
-  // Collector nodes
-  collectors.forEach((data, ens) => {
-    const nodeId = `collector-${ens}`;
-    nodes.push({
-      id: nodeId,
-      type: 'collector',
-      label: data.ens,
-      address: data.address,
-      holds: data.mintfaceHolds,
-      affinity: data.affinityHolds,
-      r: 5 + data.mintfaceHolds.length * 1.5,
-    });
-
-    // Links to each MintFace collection they hold
-    data.mintfaceHolds.forEach(colId => {
-      links.push({
-        source: nodeId,
-        target: colId,
-        type: 'hold',
-      });
-    });
-
-    // Affinity links removed — MintFace collections only
-  });
-
-  return { nodes, links };
-}
-
-function renderTerrain(collectors) {
-  const svg = d3.select('#terrain-svg');
-  svg.selectAll('*').remove();
-
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-
-  // Survey grid
-  const gridG = svg.append('g').attr('class', 'grid');
-  const gridSpacing = 80;
-
-  for (let x = 0; x < W; x += gridSpacing) {
-    gridG.append('line')
-      .attr('class', x % (gridSpacing * 5) === 0 ? 'grid-line-bright' : 'grid-line')
-      .attr('x1', x).attr('y1', 0).attr('x2', x).attr('y2', H);
-  }
-  for (let y = 0; y < H; y += gridSpacing) {
-    gridG.append('line')
-      .attr('class', y % (gridSpacing * 5) === 0 ? 'grid-line-bright' : 'grid-line')
-      .attr('x1', 0).attr('y1', y).attr('x2', W).attr('y2', y);
   }
 
-  // Survey tick marks at intersections
-  for (let x = 0; x < W; x += gridSpacing * 5) {
-    for (let y = 0; y < H; y += gridSpacing * 5) {
-      gridG.append('line').attr('class','survey-tick')
-        .attr('x1', x-4).attr('y1', y).attr('x2', x+4).attr('y2', y);
-      gridG.append('line').attr('class','survey-tick')
-        .attr('x1', x).attr('y1', y-4).attr('x2', x).attr('y2', y+4);
-    }
-  }
-
-  const { nodes, links } = buildGraph(collectors);
-  state.graphNodes = nodes;
-  state.graphLinks = links;
-
-  // D3 force simulation
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
-      if (d.type === 'hold') return 60 + Math.random() * 40;
-      return 120;
-    }).strength(0.3))
-    .force('charge', d3.forceManyBody().strength(d => d.type === 'collection' ? -400 : -80))
-    .force('center', d3.forceCenter(W / 2, H / 2))
-    .force('collision', d3.forceCollide().radius(d => d.r + 8))
-    .alphaDecay(0.02);
-
-  const mainG = svg.append('g').attr('class', 'main');
-
-  // Zoom — store on state so selectCollector can pan programmatically
-  state.zoom = d3.zoom()
-    .scaleExtent([0.3, 3])
-    .on('zoom', (event) => mainG.attr('transform', event.transform));
-  svg.call(state.zoom);
-
-  // Click on empty terrain → deselect
-  svg.on('click', (event) => {
-    if (event.target === svg.node() || event.target.closest('.grid') || event.target.tagName === 'line') {
-      deselect();
-    }
-  });
-
-  // Links
-  const linkG = mainG.append('g').attr('class', 'links');
-  const linkSel = linkG.selectAll('line')
-    .data(links)
-    .join('line')
-    .attr('class', d => `edge-${d.type}`);
-
-  // Collection nodes
-  const collectionG = mainG.append('g').attr('class', 'collections');
-  const colNodes = nodes.filter(d => d.type === 'collection');
-
-  const colSel = collectionG.selectAll('.collection-node')
-    .data(colNodes)
-    .join('g')
-    .attr('class', 'collection-node');
-
-  colSel.append('circle')
-    .attr('r', d => d.r)
-    .attr('fill', d => (COLLECTION_META[d.id] || {}).bg || 'rgba(196,168,130,0.15)')
-    .attr('stroke', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
-    .attr('stroke-width', 2);
-
-  // Inner diamond
-  colSel.append('polygon')
-    .attr('points', d => {
-      const r = d.r * 0.5;
-      return `0,${-r} ${r},0 0,${r} ${-r},0`;
-    })
-    .attr('fill', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
-    .attr('opacity', 0.8);
-
-  colSel.append('text')
-    .attr('class', 'cluster-label-main')
-    .attr('y', d => -(d.r + 8))
-    .attr('text-anchor', 'middle')
-    .attr('fill', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
-    .text(d => COLLECTION_SHORT[d.id] || d.label);
-
-  colSel.append('text')
-    .attr('class', 'cluster-label')
-    .attr('y', d => d.r + 16)
-    .attr('text-anchor', 'middle')
-    .text(d => d.year);
-
-  colSel
-    .style('cursor', 'pointer')
-    .on('click', (event, d) => { event.stopPropagation(); showCollectionCard(event, d); })
-    .on('mouseenter', (event, d) => { clearTimeout(state.cardHideTimer); showCollectionCard(event, d); })
-    .on('mouseleave', () => { state.cardHideTimer = setTimeout(hideCollectionCard, 300); });
-
-  // Collector nodes
-  const collectorG = mainG.append('g').attr('class', 'collectors');
-  const collectorsData = nodes.filter(d => d.type === 'collector');
-
-  const collectorSel = collectorG.selectAll('.collector-node')
-    .data(collectorsData)
-    .join('g')
-    .attr('class', 'collector-node')
-    .attr('data-id', d => d.id)
-    .on('mouseover', showTooltip)
-    .on('mousemove', moveTooltip)
-    .on('mouseout', hideTooltip)
-    .on('click', (event, d) => { event.stopPropagation(); highlightCollector(d); });
-
-  collectorSel.append('circle')
-    .attr('r', d => d.r)
-    .attr('fill', 'var(--node-mintface)')
-    .attr('fill-opacity', 0.6)
-    .attr('stroke', 'rgba(232,201,122,0.35)')
-    .attr('stroke-width', 1);
-
-  collectorSel.append('text')
-    .attr('y', d => d.r + 12)
-    .attr('text-anchor', 'middle')
-    .text(d => {
-      const label = d.label || '';
-      if (label.length <= 14) return label;
-      // ENS names: truncate end
-      if (label.includes('.eth') || !label.startsWith('0x')) {
-        return label.slice(0, 12) + '…';
-      }
-      // Wallet address: truncate middle — show 0x1234…5678
-      return label.slice(0, 6) + '…' + label.slice(-4);
-    });
-
-  // Tick
-  simulation.on('tick', () => {
-    linkSel
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y);
-
-    colSel.attr('transform', d => `translate(${d.x},${d.y})`);
-    collectorSel.attr('transform', d => `translate(${d.x},${d.y})`);
-  });
-
-  // HUD stats
-  document.getElementById('hud-collectors').textContent = `${collectorsData.length} collectors`;
-  document.getElementById('hud-collections').textContent = `${colNodes.length} collections`;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TOOLTIP
-// ═══════════════════════════════════════════════════════════════
-
-function showTooltip(event, d) {
-  const tt = document.getElementById('tooltip');
-  document.getElementById('tt-name').textContent = d.label;
-  document.getElementById('tt-mf-count').textContent = `${d.holds.length} work${d.holds.length !== 1 ? 's' : ''}`;
-  document.getElementById('tt-collections').textContent = d.holds.length;
-
-  const affinities = [];
-  if (d.affinity.artblocks > 0) affinities.push('Art Blocks');
-  if (d.affinity.photography > 0) affinities.push('Photography');
-  if (d.affinity.human > 0) affinities.push('Human Condition');
-
-  const affinityRow = document.getElementById('tt-affinity-row');
-  if (affinities.length > 0) {
-    document.getElementById('tt-affinity').textContent = affinities.join(' · ');
-    affinityRow.style.display = 'flex';
-  } else {
-    affinityRow.style.display = 'none';
-  }
-
-  const tagsDiv = document.getElementById('tt-tags');
-  tagsDiv.innerHTML = '';
-  d.holds.forEach(colId => {
-    const col = MINTFACE_COLLECTIONS.find(c => c.id === colId);
-    const meta = COLLECTION_META[colId] || {};
-    if (col) {
-      const tag = document.createElement('div');
-      tag.className = 'tooltip-tag';
-      tag.textContent = COLLECTION_SHORT[colId] || col.name;
-      tag.style.color = meta.color || 'var(--survey)';
-      tag.style.borderColor = meta.border || 'var(--survey-dim)';
-      tag.style.background = meta.bg || 'transparent';
-      tagsDiv.appendChild(tag);
-    }
-  });
-
-  if (d.affinity.artblocks > 0) {
-    const t = document.createElement('div');
-    t.className = 'tooltip-tag affinity-tag';
-    t.textContent = `AB ×${d.affinity.artblocks}`;
-    tagsDiv.appendChild(t);
-  }
-  if (d.affinity.photography > 0) {
-    const t = document.createElement('div');
-    t.className = 'tooltip-tag affinity-tag photo';
-    t.textContent = `Photo ×${d.affinity.photography}`;
-    tagsDiv.appendChild(t);
-  }
-  if (d.affinity.human > 0) {
-    const t = document.createElement('div');
-    t.className = 'tooltip-tag affinity-tag human';
-    t.textContent = `HC ×${d.affinity.human}`;
-    tagsDiv.appendChild(t);
-  }
-
-  tt.classList.add('visible');
-  moveTooltip(event);
-}
-
-function moveTooltip(event) {
-  const tt = document.getElementById('tooltip');
-  const x = event.clientX + 16;
-  const y = event.clientY - 10;
-  tt.style.left = Math.min(x, window.innerWidth - 300) + 'px';
-  tt.style.top = Math.max(y, 10) + 'px';
-}
-
-function hideTooltip() {
-  document.getElementById('tooltip').classList.remove('visible');
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ELEVATION
-// ═══════════════════════════════════════════════════════════════
-
-function renderElevation(collectors, connectedWallet = null) {
-  const grid = document.getElementById('elevation-grid');
-  grid.innerHTML = '';
-
-  const colCount = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract).length;
-
-  // Sort by completion %
-  const sorted = [...collectors.entries()].sort((a, b) => {
-    return b[1].mintfaceHolds.length - a[1].mintfaceHolds.length;
-  });
-
-  sorted.forEach(([address, data]) => {
-    const displayName = data.ens || address;
-    const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
-    const isSelf = connectedWallet && (address === connectedWallet || displayName === connectedWallet);
-
-    const row = document.createElement('div');
-    row.className = `elevation-row${isSelf ? ' is-self' : ''}`;
-    row.dataset.address = address;
-    row.dataset.ens = displayName;
-
-    // Name
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'elevation-collector';
-    nameDiv.textContent = isSelf ? `▶ ${displayName}` : displayName;
-    row.appendChild(nameDiv);
-
-    // Bar
-    const barWrap = document.createElement('div');
-    barWrap.className = 'elevation-bar-wrap';
-
-    const bar = document.createElement('div');
-    bar.className = 'elevation-bar';
-    bar.style.width = '0%';
-
-    const fill = document.createElement('div');
-    fill.className = 'elevation-fill';
-    bar.appendChild(fill);
-
-    // Collection segments overlay
-    const segs = document.createElement('div');
-    segs.className = 'elevation-collections';
-    MINTFACE_COLLECTIONS.forEach(col => {
-      const seg = document.createElement('div');
-      seg.className = 'elevation-segment';
-      seg.style.width = `${100 / colCount}%`;
-      seg.style.background = data.mintfaceHolds.includes(col.id)
-        ? `rgba(122,232,160,0.15)`
-        : 'transparent';
-      segs.appendChild(seg);
-    });
-    bar.appendChild(segs);
-    barWrap.appendChild(bar);
-    row.appendChild(barWrap);
-
-    // Pct
-    const pctDiv = document.createElement('div');
-    pctDiv.className = `elevation-pct${pct === 100 ? ' complete' : ''}`;
-    pctDiv.textContent = `${pct}%`;
-    row.appendChild(pctDiv);
-
-    // Missing collections — tags linking to OpenSea
-    const ethCollections = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract);
-    const missing = ethCollections.filter(col => !data.mintfaceHolds.includes(col.id));
-    if (missing.length > 0) {
-      const missingDiv = document.createElement('div');
-      missingDiv.className = 'elevation-missing';
-      missing.forEach(col => {
-        const meta = COLLECTION_META[col.id] || {};
-        const a = document.createElement('a');
-        a.className = 'elevation-missing-tag';
-        a.href = meta.url || 'https://opensea.io/mintface';
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.textContent = COLLECTION_SHORT[col.id] || col.name;
-        a.style.color = meta.color || 'var(--ink-faint)';
-        a.style.borderColor = meta.border || 'var(--grid-bright)';
-        a.style.background = meta.bg || 'transparent';
-        missingDiv.appendChild(a);
-      });
-      // span all 3 columns
-      missingDiv.style.gridColumn = '1 / -1';
-      row.appendChild(missingDiv);
-    }
-
-    grid.appendChild(row);
-
-    // Animate bar in
-    setTimeout(() => { bar.style.width = `${pct}%`; }, 100);
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════
-// AFFINITY PANELS
-// ═══════════════════════════════════════════════════════════════
-
-function renderAffinity(collectors) {
-  // Art Blocks (Patrimora holders)
-  const patrimHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('patrimora'));
-  const abOverlap = patrimHolders.filter(([, d]) => d.affinityHolds.artblocks > 0);
-  document.getElementById('ab-overlap').textContent = `${abOverlap.length} / ${patrimHolders.length}`;
-  const abProjects = abOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.artblocks, 0);
-  document.getElementById('ab-projects').textContent = abProjects;
-  const abDeepest = abOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.artblocks), 0);
-  document.getElementById('ab-depth').textContent = `${abDeepest} projects`;
-
-  const abList = document.getElementById('ab-collectors');
-  abList.innerHTML = '';
-  abOverlap.sort((a, b) => b[1].affinityHolds.artblocks - a[1].affinityHolds.artblocks).forEach(([ens, d]) => {
-    const r = document.createElement('div');
-    r.className = 'affinity-collector-row';
-    const name = document.createElement('div');
-    name.className = 'affinity-collector-name';
-    name.textContent = ens;
-    const depth = document.createElement('div');
-    depth.className = 'affinity-collector-depth';
-    for (let i = 0; i < Math.min(d.affinityHolds.artblocks, 8); i++) {
-      const pip = document.createElement('div');
-      pip.className = 'depth-pip artblocks';
-      depth.appendChild(pip);
-    }
-    r.appendChild(name); r.appendChild(depth);
-    abList.appendChild(r);
-  });
-  if (abOverlap.length === 0) abList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
-
-  // Photography (Geodetic Moments holders)
-  const geoHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('geodetic-moments'));
-  const phOverlap = geoHolders.filter(([, d]) => d.affinityHolds.photography > 0);
-  document.getElementById('ph-overlap').textContent = `${phOverlap.length} / ${geoHolders.length}`;
-  const phArtists = phOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.photography, 0);
-  document.getElementById('ph-artists').textContent = phArtists;
-  const phDeepest = phOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.photography), 0);
-  document.getElementById('ph-depth').textContent = `${phDeepest} artists`;
-
-  const phList = document.getElementById('ph-collectors');
-  phList.innerHTML = '';
-  phOverlap.sort((a, b) => b[1].affinityHolds.photography - a[1].affinityHolds.photography).forEach(([ens, d]) => {
-    const r = document.createElement('div');
-    r.className = 'affinity-collector-row';
-    const name = document.createElement('div');
-    name.className = 'affinity-collector-name';
-    name.textContent = ens;
-    const depth = document.createElement('div');
-    depth.className = 'affinity-collector-depth';
-    for (let i = 0; i < Math.min(d.affinityHolds.photography, 8); i++) {
-      const pip = document.createElement('div');
-      pip.className = 'depth-pip photo';
-      depth.appendChild(pip);
-    }
-    r.appendChild(name); r.appendChild(depth);
-    phList.appendChild(r);
-  });
-  if (phOverlap.length === 0) phList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
-
-  // Human Condition (Two Burdens holders)
-  const tbHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('two-burdens'));
-  const hcOverlap = tbHolders.filter(([, d]) => d.affinityHolds.human > 0);
-  document.getElementById('hc-overlap').textContent = `${hcOverlap.length} / ${tbHolders.length}`;
-  const hcSeries = hcOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.human, 0);
-  document.getElementById('hc-series').textContent = hcSeries;
-  const hcDeepest = hcOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.human), 0);
-  document.getElementById('hc-depth').textContent = `${hcDeepest} series`;
-
-  const hcList = document.getElementById('hc-collectors');
-  hcList.innerHTML = '';
-  hcOverlap.sort((a, b) => b[1].affinityHolds.human - a[1].affinityHolds.human).forEach(([ens, d]) => {
-    const r = document.createElement('div');
-    r.className = 'affinity-collector-row';
-    const name = document.createElement('div');
-    name.className = 'affinity-collector-name';
-    name.textContent = ens;
-    const depth = document.createElement('div');
-    depth.className = 'affinity-collector-depth';
-    for (let i = 0; i < Math.min(d.affinityHolds.human, 8); i++) {
-      const pip = document.createElement('div');
-      pip.className = 'depth-pip human';
-      depth.appendChild(pip);
-    }
-    r.appendChild(name); r.appendChild(depth);
-    hcList.appendChild(r);
-  });
-  if (hcOverlap.length === 0) hcList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
-}
-
-// ═══════════════════════════════════════════════════════════════
-// WALLET CONNECT (Privy)
-// ═══════════════════════════════════════════════════════════════
-
-let privyClient = null;
-
-async function connectWallet() {
-  const btn = document.getElementById('wallet-btn');
-
-  // If already connected, show info
-  if (state.connectedWallet) {
-    alert(`Connected: ${state.connectedWallet}`);
-    return;
-  }
-
-  // Privy — initialise if needed
-  // In production, replace APP_ID with your Privy app ID
-  // For now we use a direct wallet connect via window.ethereum
-  if (window.ethereum) {
-    try {
-      btn.textContent = 'Connecting...';
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const wallet = accounts[0].toLowerCase();
-
-      // Resolve ENS
-      const ens = await resolveENS(wallet);
-      state.connectedWallet = ens;
-
-      btn.textContent = ens.length > 16 ? ens.slice(0,14)+'…' : ens;
-      btn.classList.add('connected');
-
-      // Find this collector in the map
-      highlightWalletInTerrain(wallet, ens);
-      scrollToCollector(ens);
-
-    } catch (e) {
-      console.error(e);
-      btn.textContent = 'Connect Wallet';
-    }
-  } else {
-    // No wallet detected — prompt Privy iframe flow
-    btn.textContent = 'No wallet found';
-    setTimeout(() => btn.textContent = 'Connect Wallet', 2000);
-  }
-}
-
-function highlightWalletInTerrain(wallet, ens) {
-  // Try address match first, then ENS label match
-  let matchedAddress = null;
-  state.collectors.forEach((data, addr) => {
-    if (addr === wallet || data.ens === ens || data.ens === wallet) {
-      matchedAddress = addr;
-    }
-  });
-
-  if (matchedAddress) {
-    // Full focus mode — pulse, dim others, highlight elevation
-    selectCollector(matchedAddress);
-  } else {
-    // Wallet connected but not a collector yet — still update button
-    console.log('Wallet connected but not found in collector snapshot:', wallet);
-  }
-}
-
-function scrollToCollector(ens) {
-  const elevationSection = document.getElementById('elevation');
-  if (elevationSection) {
-    setTimeout(() => elevationSection.scrollIntoView({ behavior: 'smooth' }), 500);
-  }
-}
-
-function showCollectionCard(event, d) {
-  const col = MINTFACE_COLLECTIONS.find(c => c.id === d.id);
-  if (!col) return;
-  const meta = COLLECTION_META[d.id] || {};
-
-  // Count collectors who hold this collection
-  let holderCount = 0;
-  state.collectors.forEach(c => { if (c.mintfaceHolds.includes(d.id)) holderCount++; });
-
-  const card = document.getElementById('collection-card');
-  document.getElementById('cc-stripe').style.background = meta.color || 'var(--survey)';
-  document.getElementById('cc-eyebrow').textContent = col.year + ' · ' + (col.chain === 'bitcoin' ? 'Bitcoin' : 'Ethereum');
-  document.getElementById('cc-eyebrow').style.color = meta.color || 'var(--survey)';
-  document.getElementById('cc-title').textContent = col.name;
-  document.getElementById('cc-title').style.color = meta.color || 'var(--paper)';
-  document.getElementById('cc-desc').textContent = col.desc || '';
-  document.getElementById('cc-artworks').textContent = col.artworks || '—';
-  document.getElementById('cc-artworks').style.color = meta.color || 'var(--survey)';
-  document.getElementById('cc-chain').textContent = col.chain === 'bitcoin' ? 'BTC' : 'ETH';
-  document.getElementById('cc-chain').style.color = meta.color || 'var(--survey)';
-  document.getElementById('cc-medium').textContent = col.medium || '—';
-  document.getElementById('cc-medium').style.color = meta.color || 'var(--survey)';
-  document.getElementById('cc-collectors').textContent = holderCount;
-  document.getElementById('cc-collectors').style.color = meta.color || 'var(--survey)';
-  const link = document.getElementById('cc-link');
-  link.href = meta.url || '#';
-  link.style.color = meta.color || 'var(--survey)';
-  link.style.borderColor = meta.border || 'var(--survey-dim)';
-
-  // Position near cursor but keep within viewport
-  const margin = 16;
-  const rect = card.getBoundingClientRect();
-  let x = event.clientX + 16;
-  let y = event.clientY - 20;
-  if (x + 300 > window.innerWidth) x = event.clientX - 316;
-  if (y + 320 > window.innerHeight) y = window.innerHeight - 320 - margin;
-  if (y < margin) y = margin;
-  card.style.left = x + 'px';
-  card.style.top = y + 'px';
-  card.classList.add('visible');
-}
-
-function hideCollectionCard() {
-  document.getElementById('collection-card').classList.remove('visible');
-}
-
-function highlightCollector(d) {
-  // Route through selectCollector for full focus mode + elevation update
-  if (state.selectedCollector === d.address) return; // already selected
-  selectCollector(d.address);
-  // Update search bar to show selected name
-  const input = document.getElementById('collector-search');
-  if (input) input.value = d.label || d.address;
-  const countEl = document.getElementById('search-count');
-  if (countEl) { countEl.textContent = d.label || d.address; countEl.style.display = 'block'; }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CLOCK
-// ═══════════════════════════════════════════════════════════════
-
-function updateClock() {
-  const now = new Date();
-  const nzTime = new Intl.DateTimeFormat('en-NZ', {
-    timeZone: 'Pacific/Auckland',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false
-  }).format(now);
-  const el = document.getElementById('hud-time');
-  if (el) el.textContent = `NZT ${nzTime}`;
-}
-
-setInterval(updateClock, 1000);
-updateClock();
-
-// ═══════════════════════════════════════════════════════════════
-// LOADING + INIT
-// ═══════════════════════════════════════════════════════════════
-
-function setLoaderProgress(pct, status) {
-  document.getElementById('loader-bar').style.width = `${pct}%`;
-  document.getElementById('loader-status').textContent = status;
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// SEARCH
-// ═══════════════════════════════════════════════════════════════
-
-let dropdownActiveIndex = -1;
-
-function filterElevation(query) {
-  const q = query.trim().toLowerCase();
-  const rows = document.querySelectorAll('.elevation-row');
-  const clearBtn = document.getElementById('search-clear');
-  const countEl = document.getElementById('search-count');
-  const dropdown = document.getElementById('search-dropdown');
-
-  dropdownActiveIndex = -1;
-
-  if (!q) {
-    clearBtn.style.display = 'none';
-    countEl.style.display = 'none';
-    dropdown.classList.remove('visible');
-    dropdown.innerHTML = '';
-    rows.forEach(row => {
-      row.classList.remove('hidden', 'search-highlight');
-    });
-    d3.selectAll('.collector-node').classed('highlight', false);
-    if (state.connectedWallet) {
-      d3.selectAll('.collector-node').filter(d => d.label === state.connectedWallet).classed('highlight', true);
-    }
-    return;
-  }
-
-  clearBtn.style.display = 'block';
-
-  // Filter elevation rows
-  let matches = [];
-  rows.forEach(row => {
-    const displayName = (row.dataset.ens || '').toLowerCase();
-    const rawAddress = (row.dataset.address || '').toLowerCase();
-    const match = displayName.includes(q) || rawAddress.includes(q);
-    row.classList.toggle('hidden', !match);
-    row.classList.toggle('search-highlight', match);
-    if (match) {
-      matches.push({
-        ens: row.dataset.ens || row.dataset.address,
-        address: row.dataset.address,
-        holds: row.querySelectorAll('.elevation-segment[style*="rgba(122"]').length,
-      });
-    }
-  });
-
-  countEl.textContent = `${matches.length} found`;
-  countEl.style.display = 'block';
-
-  // Build dropdown
-  dropdown.innerHTML = '';
-  if (matches.length === 0) {
-    dropdown.innerHTML = '<div class="dropdown-empty">No collectors found</div>';
-    dropdown.classList.add('visible');
-    return;
-  }
-
-  matches.slice(0, 30).forEach((m, i) => {
-    const item = document.createElement('div');
-    item.className = 'dropdown-item';
-    item.dataset.address = m.address;
-
-    // Highlight matched portion in name
-    const displayName = m.ens;
-    const qIdx = displayName.toLowerCase().indexOf(q);
-    let nameHtml = displayName;
-    if (qIdx >= 0) {
-      nameHtml = displayName.slice(0, qIdx)
-        + '<em>' + displayName.slice(qIdx, qIdx + q.length) + '</em>'
-        + displayName.slice(qIdx + q.length);
-    }
-
-    // Get holds from state
-    const collectorData = state.collectors.get(m.address);
-    const holds = collectorData ? collectorData.mintfaceHolds : [];
-
-    const tagsHtml = holds.slice(0, 3).map(h => {
-      const col = MINTFACE_COLLECTIONS.find(c => c.id === h);
-      const meta = COLLECTION_META[h] || {};
-      const shortName = COLLECTION_SHORT[h] || col?.name.split(' ')[0] || h;
-      return col ? `<span class="dropdown-tag" style="color:${meta.color||'var(--survey)'};border-color:${meta.border||'var(--survey-dim)'};background:${meta.bg||'transparent'}">${shortName}</span>` : '';
-    }).join('');
-
-    item.innerHTML = `
-      <div class="dropdown-item-name">${nameHtml}</div>
-      <div class="dropdown-item-tags">${tagsHtml}</div>
-    `;
-
-    item.addEventListener('click', () => selectCollector(m.address));
-    item.addEventListener('mouseenter', () => {
-      dropdownActiveIndex = i;
-      updateDropdownActive();
-    });
-    dropdown.appendChild(item);
-  });
-
-  dropdown.classList.add('visible');
-
-  // Highlight matching terrain nodes
-  d3.selectAll('.collector-node').each(function(d) {
-    const labelMatch = d.label && d.label.toLowerCase().includes(q);
-    const addrMatch = d.address && d.address.toLowerCase().includes(q);
-    d3.select(this).classed('highlight', labelMatch || addrMatch);
-  });
-}
-
-function updateDropdownActive() {
-  const items = document.querySelectorAll('.dropdown-item');
-  items.forEach((item, i) => {
-    item.classList.toggle('active', i === dropdownActiveIndex);
-  });
-}
-
-function searchKeyNav(event) {
-  const dropdown = document.getElementById('search-dropdown');
-  const items = document.querySelectorAll('.dropdown-item');
-  if (!dropdown.classList.contains('visible') || items.length === 0) return;
-
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    dropdownActiveIndex = Math.min(dropdownActiveIndex + 1, items.length - 1);
-    updateDropdownActive();
-    items[dropdownActiveIndex]?.scrollIntoView({ block: 'nearest' });
-  } else if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    dropdownActiveIndex = Math.max(dropdownActiveIndex - 1, 0);
-    updateDropdownActive();
-    items[dropdownActiveIndex]?.scrollIntoView({ block: 'nearest' });
-  } else if (event.key === 'Enter') {
-    event.preventDefault();
-    const activeItem = items[dropdownActiveIndex];
-    if (activeItem) selectCollector(activeItem.dataset.address);
-  } else if (event.key === 'Escape') {
-    document.getElementById('search-dropdown').classList.remove('visible');
-  }
-}
-
-function selectCollector(address) {
-  const dropdown = document.getElementById('search-dropdown');
-  const input = document.getElementById('collector-search');
-  const data = state.collectors.get(address);
-  if (!data) return;
-
-  const displayName = data.ens || address;
-  input.value = displayName;
-  dropdown.classList.remove('visible');
-
-  // Get this collector's held collection IDs
-  const heldCollections = new Set(data.mintfaceHolds);
-  const nodeId = `collector-${address}`;
-
-  // Dim all nodes and links first
-  d3.selectAll('.collector-node').style('opacity', 0.08);
-  d3.selectAll('.collection-node').style('opacity', 0.08);
-  d3.selectAll('.links line').style('opacity', 0);
-
-  // Show only this collector's node at full opacity
-  d3.selectAll('.collector-node').each(function(d) {
-    if (d.address === address || d.label === displayName) {
-      d3.select(this).style('opacity', 1);
-    }
-  });
-
-  // Show only collection nodes this collector holds
-  d3.selectAll('.collection-node').each(function(d) {
-    if (heldCollections.has(d.id)) {
-      d3.select(this).style('opacity', 1);
-    }
-  });
-
-  // Show only links connected to this collector
-  d3.selectAll('.links line').each(function(d) {
-    const srcId = d.source?.id || d.source;
-    const tgtId = d.target?.id || d.target;
-    if (srcId === nodeId || tgtId === nodeId) {
-      d3.select(this).style('opacity', 1).style('stroke-width', 2).style('stroke', 'rgba(255,255,255,0.3)');
-    }
-  });
-
-  // Clear prior highlights + ripples
-  d3.selectAll('.collector-node').classed('highlight', false).select('circle')
-    .style('stroke', null).style('stroke-width', null).style('filter', null);
-  d3.selectAll('.node-ripple').remove();
-
-  // Pulse + ripple on selected node
-  d3.selectAll('.collector-node').each(function(d) {
-    if (d.address === address || d.label === displayName) {
-      const g = d3.select(this);
-      g.classed('highlight', true);
-      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0);
-      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
-        .style('animation-delay', '0.6s');
-      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
-        .style('animation-delay', '1.2s');
-    }
-  });
-
-  // Update count label
-  document.getElementById('search-count').textContent = displayName;
-  document.getElementById('search-count').style.display = 'block';
-  document.getElementById('search-clear').style.display = 'block';
-  state.selectedCollector = address;
-
-  // Update elevation — highlight row, dim others
-  document.querySelectorAll('.elevation-row').forEach(row => {
-    const isMatch = row.dataset.address === address;
-    row.classList.toggle('hidden', !isMatch);
-    row.classList.toggle('search-highlight', isMatch);
-    row.style.opacity = '1';
-  });
-
-  // Populate selected collector card above terrain
-  const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
-  document.getElementById('sc-name').textContent = displayName;
-  document.getElementById('sc-pct').textContent = pct + '%';
-  document.getElementById('sc-pct').className = `elevation-pct${pct === 100 ? ' complete' : ''}`;
-
-  // Bar fill
-  const scBar = document.getElementById('sc-bar');
-  scBar.style.width = pct + '%';
-
-  // Segments
-  const scSegs = document.getElementById('sc-segs');
-  scSegs.innerHTML = '';
-  MINTFACE_COLLECTIONS.forEach(col => {
-    const seg = document.createElement('div');
-    seg.className = 'elevation-segment';
-    seg.style.width = `${100 / colCount}%`;
-    seg.style.background = data.mintfaceHolds.includes(col.id) ? 'rgba(122,232,160,0.15)' : 'transparent';
-    scSegs.appendChild(seg);
-  });
-
-  // Collection tags
-  const scTags = document.getElementById('sc-tags');
-  scTags.innerHTML = '';
-  data.mintfaceHolds.forEach(colId => {
-    const meta = COLLECTION_META[colId] || {};
-    const tag = document.createElement('div');
-    tag.className = 'tooltip-tag';
-    tag.textContent = COLLECTION_SHORT[colId] || colId;
-    tag.style.color = meta.color || 'var(--survey)';
-    tag.style.borderColor = meta.border || 'var(--survey-dim)';
-    tag.style.background = meta.bg || 'transparent';
-    scTags.appendChild(tag);
-  });
-
-  // Show card
-  document.getElementById('selected-card').classList.add('visible');
-}
-
-// Close dropdown when clicking outside
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.terrain-search-wrap')) {
-    document.getElementById('search-dropdown')?.classList.remove('visible');
-  }
-});
-
-function deselect() {
-  // Restore full terrain
-  d3.selectAll('.collector-node').style('opacity', 1).classed('highlight', false)
-    .select('circle').style('stroke', null).style('stroke-width', null).style('filter', null);
-  d3.selectAll('.collection-node').style('opacity', 1);
-  d3.selectAll('.links line').style('opacity', 1).style('stroke-width', null).style('stroke', null);
-  d3.selectAll('.node-ripple').remove();
-  state.selectedCollector = null;
-  // Clear search bar
-  const input = document.getElementById('collector-search');
-  if (input) input.value = '';
-  const countEl = document.getElementById('search-count');
-  if (countEl) countEl.style.display = 'none';
-  const clearBtn = document.getElementById('search-clear');
-  if (clearBtn) clearBtn.style.display = 'none';
-  const dropdown = document.getElementById('search-dropdown');
-  if (dropdown) dropdown.classList.remove('visible');
-  // Restore all elevation rows
-  document.querySelectorAll('.elevation-row').forEach(r => {
-    r.classList.remove('hidden', 'search-highlight');
-    r.style.opacity = '1';
-  });
-  // Hide selected card
-  document.getElementById('selected-card').classList.remove('visible');
-}
-
-function clearSearch() {
-  deselect();
-  document.getElementById('collector-search')?.focus();
-}
-
-async function loadSnapshot() {
-  try {
-    const res = await fetch('/snapshot.json');
-    if (!res.ok) throw new Error('no snapshot');
-    const data = await res.json();
-    const collectors = new Map();
-    for (const c of data.collectors) {
-      collectors.set(c.address, {
-        ens: c.address,  // raw addr — ENS resolved lazily in background
-        address: c.address,
-        mintfaceHolds: c.mintfaceHolds,
-        affinityHolds: c.affinityHolds || { artblocks: 0, photography: 0, human: 0 },
-      });
-    }
-    return collectors;
-  } catch {
-    return null;
-  }
-}
-
-async function init() {
-  setLoaderProgress(10, 'Loading collector data...');
-
-  let collectors = await loadSnapshot();
-
-  if (collectors && collectors.size > 0) {
-    setLoaderProgress(40, `${collectors.size} collectors surveyed...`);
-    state.collectors = collectors;
-  } else {
-    setLoaderProgress(40, 'Generating terrain...');
-    collectors = generateDemoData();
-    state.collectors = collectors;
-  }
-
-  setLoaderProgress(60, 'Plotting survey points...');
-  renderTerrain(state.collectors);
-
-  setLoaderProgress(80, 'Computing elevation...');
-  renderElevation(state.collectors);
-
-  setLoaderProgress(100, 'Terrain ready');
-
-  setTimeout(() => {
-    document.getElementById('loader').classList.add('hidden');
-  }, 600);
-
-  // Background: resolve ENS names + enrich with affinity via OpenSea
-  enrichLiveData();
-}
-
-async function enrichLiveData() {
-  // Phase 1: resolve ENS for all addresses (batched, no rush)
-  const entries = [...state.collectors.entries()];
-  let anyUpdated = false;
-
-  let batchCount = 0;
-  for (const [address, data] of entries.slice(0, 120)) {
-    try {
-      const ens = await resolveENS(address);
-      if (ens !== address) {
-        data.ens = ens;
-        anyUpdated = true;
-        // Update the matching elevation row in place without full re-render
-        const row = document.querySelector(`.elevation-row[data-address="${address}"]`);
-        if (row) {
-          row.dataset.ens = ens;
-          const nameEl = row.querySelector('.elevation-collector');
-          if (nameEl) nameEl.textContent = ens;
+  async function fetchAcquireData() {
+    renderAcquireCards(); // render shells immediately
+    const results = {};
+    for (const col of ACQUIRE_COLLECTIONS) {
+      if (!col.slug) continue;
+      try {
+        const r = await fetch(`https://api.opensea.io/api/v2/collections/${col.slug}/stats`);
+        if (!r.ok) continue;
+        const d = await r.json();
+        const total = d.total || {};
+        results[col.id] = {
+          floor: total.floor_price ?? null,
+          listed: total.num_owners != null ? null : null, // listed count in v2
+        };
+        // Also fetch listings count
+        const r2 = await fetch(`https://api.opensea.io/api/v2/listings/collection/${col.slug}/best?limit=1`);
+        if (r2.ok) {
+          const d2 = await r2.json();
+          // Use count from stats
         }
-        // Update terrain node label
-        d3.selectAll('.collector-node').each(function(d) {
-          if (d.address === address) { d.label = ens; }
-        });
-        d3.selectAll('.collector-node text').filter(function(d) {
-          return d && d.address === address;
-        }).text(d => d.label.length > 12 ? d.label.slice(0,10)+'…' : d.label);
+        renderAcquireCards(results);
+      } catch(e) { /* silent */ }
+      await new Promise(res => setTimeout(res, 300));
+    }
+  }
+
+  // Use the collectors site proxy pattern via a simple CORS-friendly approach
+  // OpenSea v2 stats endpoint is public for floor price
+  async function fetchCollectionStats() {
+    renderAcquireCards();
+    const results = {};
+    const slugs = ACQUIRE_COLLECTIONS.filter(c => c.slug);
+
+    // Proxy via collectors site API to avoid CORS
+    const PROXY = 'https://mintface-collectors.vercel.app/api/opensea';
+
+    await Promise.all(slugs.map(async col => {
+      try {
+        const r = await fetch(`${PROXY}?path=collections/${col.slug}/stats`);
+        if (!r.ok) return;
+        const d = await r.json();
+        const t = d.total || {};
+        results[col.id] = {
+          floor: t.floor_price ?? null,
+          listed: t.listed_count ?? null,
+        };
+      } catch(e) {}
+    }));
+
+    renderAcquireCards(results);
+  }
+
+  fetchCollectionStats();
+
+  // Scroll reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
       }
-    } catch {}
-    batchCount++;
-    await new Promise(r => setTimeout(r, 60));
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  reveals.forEach(el => observer.observe(el));
+
+  // Stagger child reveals in collection
+  document.querySelectorAll('.collection.reveal').forEach((col, i) => {
+    col.style.transitionDelay = '0s';
+  });
+
+  // Collection filter
+  function filterCollection(type, btn) {
+    document.querySelectorAll('.catalog-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    document.querySelectorAll('.collection').forEach(col => {
+      if (type === 'all') {
+        col.style.display = '';
+      } else {
+        const types = col.dataset.type || '';
+        col.style.display = types.split(' ').includes(type) ? '' : 'none';
+      }
+    });
   }
 
-  // Phase 2: affinity enrichment via OpenSea (patrimora + two-burdens holders only)
-  for (const [address, data] of entries) {
-    let changed = false;
-
-    if (data.mintfaceHolds.includes('patrimora') && data.affinityHolds.artblocks === 0) {
-      try {
-        const res = await checkAffinityContracts(address, [
-          { name: 'Art Blocks Factory', contract: AB_FACTORY },
-          { name: 'Art Blocks V3', contract: AB_V3 },
-        ]);
-        if (res.count > 0) { data.affinityHolds.artblocks = res.count; changed = true; }
-      } catch {}
+  // Smooth nav appearance
+  window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    if (window.scrollY > 60) {
+      nav.style.background = 'rgba(242,239,233,0.92)';
+      nav.style.backdropFilter = 'blur(12px)';
+      nav.style.boxShadow = '0 1px 0 rgba(0,0,0,0.06)';
+      nav.style.mixBlendMode = 'normal';
+    } else {
+      nav.style.background = '';
+      nav.style.backdropFilter = '';
+      nav.style.boxShadow = '';
+      nav.style.mixBlendMode = 'multiply';
     }
-
-    if (data.mintfaceHolds.includes('two-burdens') && data.affinityHolds.human === 0) {
-      try {
-        const res = await checkAffinityContracts(address, [
-          ...APOCALYPSE_CONTRACTS, ...UNDERSCORE_CONTRACTS, ...HAFFKTA_CONTRACTS
-        ]);
-        if (res.count > 0) { data.affinityHolds.human = res.count; changed = true; }
-      } catch {}
-    }
-
-    if (data.mintfaceHolds.includes('geodetic-moments') && data.affinityHolds.photography === 0) {
-      try {
-        // Check a sample of photography contracts via collection slug
-        const photoSample = PHOTO_ARTISTS.slice(0, 5).map(slug => ({ name: slug, contract: slug }));
-        const res = await checkAffinityContracts(address, photoSample);
-        if (res.count > 0) { data.affinityHolds.photography = res.count; changed = true; }
-      } catch {}
-    }
-
-    // affinity rendering removed
-
-    await new Promise(r => setTimeout(r, 200));
-  }
-}
-
-// ── Start ──
-init();
+  });
 </script>
 </body>
 </html>
