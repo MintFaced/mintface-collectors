@@ -707,6 +707,73 @@
     .hud-tr, .hud-bl, .hud-br { display: none; }
     .legend { left: 20px; bottom: 60px; }
   }
+
+  /* ── SEARCH BAR ── */
+  .search-wrap {
+    padding: 0 80px 40px;
+    position: relative;
+  }
+
+  .search-input {
+    width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--grid-bright);
+    border-left: 2px solid var(--survey-dim);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 14px 48px 14px 20px;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .search-input::placeholder {
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+  }
+
+  .search-input:focus {
+    border-color: var(--survey);
+    background: rgba(255,255,255,0.05);
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 92px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 8px;
+    display: none;
+  }
+
+  .search-clear:hover { color: var(--survey); }
+
+  .search-count {
+    position: absolute;
+    right: 96px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 8px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    pointer-events: none;
+  }
+
+  .elevation-row.hidden { display: none; }
+  .elevation-row.search-highlight { background: rgba(196,168,130,0.06); }
+
+  @media (max-width: 768px) {
+    .search-wrap { padding: 0 24px 32px; }
+    .search-clear { right: 36px; }
+    .search-count { right: 40px; }
+  }
 </style>
 </head>
 <body>
@@ -812,6 +879,20 @@
       <span>SUMMIT</span>
     </div>
     <div></div>
+  </div>
+
+  <div class="search-wrap">
+    <input
+      class="search-input"
+      id="collector-search"
+      type="text"
+      placeholder="Search collector — ENS name or wallet address..."
+      oninput="filterElevation(this.value)"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <span class="search-count" id="search-count"></span>
+    <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
   </div>
 
   <div class="elevation-grid" id="elevation-grid">
@@ -1606,6 +1687,57 @@ function setLoaderProgress(pct, status) {
   document.getElementById('loader-status').textContent = status;
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════════════
+
+function filterElevation(query) {
+  const q = query.trim().toLowerCase();
+  const rows = document.querySelectorAll('.elevation-row');
+  const clearBtn = document.getElementById('search-clear');
+  const countEl = document.getElementById('search-count');
+
+  clearBtn.style.display = q ? 'block' : 'none';
+
+  let visible = 0;
+  rows.forEach(row => {
+    const name = (row.querySelector('.elevation-collector')?.textContent || '').toLowerCase();
+    const match = !q || name.includes(q);
+    row.classList.toggle('hidden', !match);
+    row.classList.toggle('search-highlight', match && q.length > 0);
+    if (match) visible++;
+  });
+
+  if (q) {
+    countEl.textContent = `${visible} found`;
+    countEl.style.display = 'block';
+  } else {
+    countEl.style.display = 'none';
+  }
+
+  // Also highlight matching node in terrain
+  if (q.length >= 3) {
+    d3.selectAll('.collector-node').each(function(d) {
+      const match = d.label.toLowerCase().includes(q);
+      d3.select(this).classed('highlight', match);
+    });
+  } else {
+    d3.selectAll('.collector-node').classed('highlight', false);
+    // Re-highlight connected wallet if any
+    if (state.connectedWallet) {
+      d3.selectAll('.collector-node').filter(d => d.label === state.connectedWallet).classed('highlight', true);
+    }
+  }
+}
+
+function clearSearch() {
+  const input = document.getElementById('collector-search');
+  input.value = '';
+  filterElevation('');
+  input.focus();
+}
+
 async function loadSnapshot() {
   try {
     const res = await fetch('/snapshot.json');
@@ -1726,4 +1858,3 @@ init();
 </script>
 </body>
 </html>
-
