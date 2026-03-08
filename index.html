@@ -406,6 +406,67 @@
     background: var(--deep);
   }
 
+  /* ── Selected collector card above terrain ── */
+  #selected-card {
+    display: none;
+    position: relative;
+    z-index: 10;
+    margin: 0;
+    padding: 20px 80px;
+    background: rgba(14,13,11,0.95);
+    border-bottom: 1px solid var(--grid);
+    backdrop-filter: blur(8px);
+  }
+
+  #selected-card.visible { display: block; }
+
+  .selected-card-inner {
+    display: grid;
+    grid-template-columns: 220px 1fr 80px;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .selected-card-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .selected-card-eyebrow {
+    font-family: var(--mono);
+    font-size: 8px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .selected-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .selected-card-dismiss {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    text-transform: uppercase;
+    text-align: right;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+
+  .selected-card-dismiss:hover { color: var(--survey); }
+
   .elevation-grid {
     padding: 0 80px;
     display: grid;
@@ -894,7 +955,11 @@
     letter-spacing: 0.15em;
   }
   .elevation-row.hidden { display: none; }
-  .elevation-row.search-highlight { background: rgba(196,168,130,0.06); }
+  .elevation-row.search-highlight {
+    background: rgba(196,168,130,0.1);
+    border-left: 2px solid var(--survey);
+    padding-left: 12px;
+  }
 
   @media (max-width: 768px) {
     .terrain-search-wrap { padding: 70px 24px 0; }
@@ -956,6 +1021,29 @@
 </div>
 
 <!-- ── TERRAIN ── -->
+<!-- ── SELECTED COLLECTOR CARD ── -->
+<div id="selected-card">
+  <div class="selected-card-inner">
+    <div>
+      <div class="selected-card-eyebrow">Selected Collector</div>
+      <div class="selected-card-name" id="sc-name">—</div>
+    </div>
+    <div>
+      <div id="sc-bar-wrap" class="elevation-bar-wrap" style="margin:0">
+        <div class="elevation-bar" id="sc-bar" style="width:0%">
+          <div class="elevation-fill"></div>
+          <div class="elevation-collections" id="sc-segs"></div>
+        </div>
+      </div>
+      <div class="selected-card-tags" id="sc-tags"></div>
+    </div>
+    <div>
+      <div class="elevation-pct" id="sc-pct">—</div>
+      <div class="selected-card-dismiss" id="sc-dismiss" onclick="deselect()">× clear</div>
+    </div>
+  </div>
+</div>
+
 <section id="terrain">
   <svg id="terrain-svg"></svg>
 
@@ -2017,13 +2105,51 @@ function selectCollector(address) {
   document.getElementById('search-clear').style.display = 'block';
   state.selectedCollector = address;
 
-  // Update elevation — show this row prominently, dim others
+  // Update elevation — highlight row, dim others
   document.querySelectorAll('.elevation-row').forEach(row => {
     const isMatch = row.dataset.address === address;
-    row.classList.toggle('hidden', false); // keep all visible
+    row.classList.toggle('hidden', false);
     row.classList.toggle('search-highlight', isMatch);
     row.style.opacity = isMatch ? '1' : '0.3';
   });
+
+  // Populate selected collector card above terrain
+  const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
+  document.getElementById('sc-name').textContent = displayName;
+  document.getElementById('sc-pct').textContent = pct + '%';
+  document.getElementById('sc-pct').className = `elevation-pct${pct === 100 ? ' complete' : ''}`;
+
+  // Bar fill
+  const scBar = document.getElementById('sc-bar');
+  scBar.style.width = pct + '%';
+
+  // Segments
+  const scSegs = document.getElementById('sc-segs');
+  scSegs.innerHTML = '';
+  MINTFACE_COLLECTIONS.forEach(col => {
+    const seg = document.createElement('div');
+    seg.className = 'elevation-segment';
+    seg.style.width = `${100 / colCount}%`;
+    seg.style.background = data.mintfaceHolds.includes(col.id) ? 'rgba(122,232,160,0.15)' : 'transparent';
+    scSegs.appendChild(seg);
+  });
+
+  // Collection tags
+  const scTags = document.getElementById('sc-tags');
+  scTags.innerHTML = '';
+  data.mintfaceHolds.forEach(colId => {
+    const meta = COLLECTION_META[colId] || {};
+    const tag = document.createElement('div');
+    tag.className = 'tooltip-tag';
+    tag.textContent = COLLECTION_SHORT[colId] || colId;
+    tag.style.color = meta.color || 'var(--survey)';
+    tag.style.borderColor = meta.border || 'var(--survey-dim)';
+    tag.style.background = meta.bg || 'transparent';
+    scTags.appendChild(tag);
+  });
+
+  // Show card
+  document.getElementById('selected-card').classList.add('visible');
 }
 
 // Close dropdown when clicking outside
@@ -2055,6 +2181,8 @@ function deselect() {
     r.classList.remove('hidden', 'search-highlight');
     r.style.opacity = '1';
   });
+  // Hide selected card
+  document.getElementById('selected-card').classList.remove('visible');
 }
 
 function clearSearch() {
