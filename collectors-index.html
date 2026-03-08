@@ -1,0 +1,2503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MintFace — Collector Terrain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@privy-io/js-sdk-core@latest/dist/index.umd.js"></script>
+<style>
+  :root {
+    --void: #04040a;
+    --deep: #080812;
+    --surface: #0d0d1a;
+    --grid: rgba(100,120,200,0.08);
+    --grid-bright: rgba(100,120,200,0.18);
+    --ink: #e8e4d8;
+    --ink-dim: rgba(232,228,216,0.4);
+    --ink-faint: rgba(232,228,216,0.15);
+    --accent: #8b3a2a;
+    --accent-glow: rgba(139,58,42,0.3);
+    --survey: #c4a882;
+    --survey-dim: rgba(196,168,130,0.3);
+    --node-mintface: #e8c97a;
+    --node-artblocks: #7a9ee8;
+    --node-photography: #7ae8c4;
+    --node-human: #e87a9e;
+    --edge-affinity: rgba(200,180,120,0.25);
+    --edge-hold: rgba(255,255,255,0.06);
+    --mono: 'Space Mono', monospace;
+    --serif: 'Cormorant Garamond', Georgia, serif;
+    --elevation-low: #1a3a2a;
+    --elevation-mid: #2a5a3a;
+    --elevation-high: #4a8a5a;
+    --elevation-peak: #7ae8a0;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── SCAN LINE TEXTURE ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 40px;
+    background: linear-gradient(to bottom, var(--void), transparent);
+  }
+
+  .nav-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-decoration: none;
+  }
+
+  .nav-brand-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--survey);
+  }
+
+  .nav-brand-sub {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 28px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--survey); }
+
+  /* ── WALLET CONNECT BUTTON ── */
+  #wallet-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--survey);
+    background: none;
+    border: 1px solid var(--survey-dim);
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  #wallet-btn:hover {
+    background: var(--survey-dim);
+    border-color: var(--survey);
+  }
+
+  #wallet-btn.connected {
+    color: var(--node-mintface);
+    border-color: rgba(232,201,122,0.3);
+  }
+
+  /* ── HERO / TERRAIN SECTION ── */
+  #terrain {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #terrain-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Coordinate grid lines */
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .grid-line-bright { stroke: var(--grid-bright); stroke-width: 1; }
+
+  /* Survey tick marks */
+  .survey-tick { fill: none; stroke: var(--survey-dim); stroke-width: 1; }
+
+  /* Collection cluster labels */
+  .cluster-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    fill: var(--ink-dim);
+  }
+
+  .cluster-label-main {
+    font-size: 10px;
+    fill: var(--survey);
+    letter-spacing: 0.25em;
+  }
+
+  /* Collector nodes */
+  .collector-node {
+    cursor: pointer;
+    transition: r 0.2s;
+  }
+
+  .collector-node circle {
+    stroke-width: 1.5;
+    transition: all 0.3s;
+  }
+
+  .collector-node:hover circle { stroke-width: 2.5; }
+
+  .collector-node text {
+    font-family: var(--mono);
+    font-size: 8px;
+    fill: var(--ink-dim);
+    pointer-events: none;
+  }
+
+  /* Collection anchor nodes */
+  .collection-node circle {
+    stroke-width: 2;
+  }
+
+  /* Edges */
+  .edge-hold { stroke: var(--edge-hold); stroke-width: 1; }
+  .edge-affinity-artblocks { stroke: var(--node-artblocks); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
+  .edge-affinity-photo { stroke: var(--node-photography); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
+  .edge-affinity-human { stroke: var(--node-human); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
+
+  /* Highlighted / selected collector */
+  .collector-node.highlight circle {
+    stroke: #ffffff !important;
+    stroke-width: 2.5 !important;
+    animation: node-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes node-pulse {
+    0%   { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); stroke-width: 2.5px; }
+    50%  { filter: drop-shadow(0 0 14px rgba(255,255,255,1)) drop-shadow(0 0 28px rgba(255,255,255,0.4)); stroke-width: 3.5px; }
+    100% { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); stroke-width: 2.5px; }
+  }
+
+  /* Ripple ring — added via JS */
+  .node-ripple {
+    fill: none;
+    stroke: rgba(255,255,255,0.5);
+    stroke-width: 1;
+    animation: ripple-out 1.8s ease-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes ripple-out {
+    0%   { r: 0;  opacity: 0.7; }
+    100% { r: 28px; opacity: 0; }
+  }
+
+  /* ── HUD overlays ── */
+  .hud {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    pointer-events: none;
+  }
+
+  .hud-tl { top: 80px; left: 40px; }
+  .hud-tr { top: 80px; right: 40px; text-align: right; }
+  .hud-bl { bottom: 40px; left: 40px; }
+  .hud-br { bottom: 40px; right: 40px; text-align: right; }
+
+  .hud-coord {
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* ── LEGEND ── */
+  .legend {
+    position: absolute;
+    bottom: 80px;
+    left: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-line {
+    width: 24px;
+    height: 1px;
+    flex-shrink: 0;
+    border-top: 1px dashed;
+  }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed;
+    background: rgba(4,4,10,0.95);
+    border: 1px solid var(--survey-dim);
+    padding: 16px 20px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 300;
+    max-width: 280px;
+  }
+
+  #tooltip.visible { opacity: 1; }
+
+  .tooltip-name {
+    font-size: 11px;
+    color: var(--survey);
+    letter-spacing: 0.15em;
+    margin-bottom: 8px;
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    font-size: 8px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+    margin-bottom: 3px;
+  }
+
+  .tooltip-row span:last-child { color: var(--ink); }
+
+  .tooltip-collections {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* ── Collection node popup card ── */
+  .collection-card {
+    position: fixed;
+    z-index: 200;
+    min-width: 240px;
+    max-width: 300px;
+    background: rgba(10,9,8,0.97);
+    border: 1px solid var(--grid);
+    padding: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    backdrop-filter: blur(12px);
+  }
+
+  .collection-card.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .collection-card-stripe {
+    height: 3px;
+    width: 100%;
+  }
+
+  .collection-card-body {
+    padding: 14px 16px 16px;
+  }
+
+  .collection-card-eyebrow {
+    font-family: var(--mono);
+    font-size: 7px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .collection-card-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--paper);
+    margin-bottom: 10px;
+    line-height: 1.3;
+  }
+
+  .collection-card-desc {
+    font-family: var(--sans);
+    font-size: 10px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  .collection-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .collection-card-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .collection-card-stat-label {
+    font-family: var(--mono);
+    font-size: 7px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .collection-card-stat-value {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  .collection-card-link {
+    display: block;
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 6px 10px;
+    border: 1px solid;
+    text-align: center;
+    transition: opacity 0.15s;
+    opacity: 0.8;
+  }
+
+  .collection-card-link:hover { opacity: 1; }
+
+  .tooltip-tag {
+    font-size: 7px;
+    letter-spacing: 0.1em;
+    padding: 2px 6px;
+    border: 1px solid var(--survey-dim);
+    color: var(--survey);
+    text-transform: uppercase;
+  }
+
+  .tooltip-affinity-tag {
+    border-color: rgba(122,158,232,0.3);
+    color: var(--node-artblocks);
+  }
+
+  .tooltip-affinity-tag.photo {
+    border-color: rgba(122,232,196,0.3);
+    color: var(--node-photography);
+  }
+
+  .tooltip-affinity-tag.human {
+    border-color: rgba(232,122,158,0.3);
+    color: var(--node-human);
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    padding: 100px 0;
+    position: relative;
+  }
+
+  .section-header {
+    padding: 0 80px 60px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--grid-bright);
+    margin-bottom: 60px;
+  }
+
+  .section-eyebrow {
+    font-size: 8px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-family: var(--serif);
+    font-size: 48px;
+    font-weight: 300;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .section-title em {
+    font-style: italic;
+    color: var(--survey);
+  }
+
+  .section-meta {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--ink-faint);
+    text-align: right;
+  }
+
+  /* ── ELEVATION SECTION ── */
+  #elevation {
+    background: var(--deep);
+  }
+
+  /* ── Selected collector card above terrain ── */
+  #selected-card {
+    display: none;
+    position: relative;
+    z-index: 10;
+    margin: 0;
+    padding: 20px 80px;
+    background: rgba(14,13,11,0.95);
+    border-bottom: 1px solid var(--grid);
+    backdrop-filter: blur(8px);
+  }
+
+  #selected-card.visible { display: block; }
+
+  .selected-card-inner {
+    display: grid;
+    grid-template-columns: 220px 1fr 80px;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .selected-card-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .selected-card-eyebrow {
+    font-family: var(--mono);
+    font-size: 8px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .selected-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .selected-card-dismiss {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    text-transform: uppercase;
+    text-align: right;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+
+  .selected-card-dismiss:hover { color: var(--survey); }
+
+  .elevation-grid {
+    padding: 0 80px;
+    display: grid;
+    gap: 2px;
+  }
+
+  .elevation-missing {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0 14px;
+  }
+
+  .elevation-missing-tag {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    padding: 3px 8px;
+    border: 1px solid;
+    text-decoration: none;
+    text-transform: uppercase;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+  }
+
+  .elevation-missing-tag:hover { opacity: 1; }
+
+  .elevation-missing-tag::before {
+    content: '+ ';
+    opacity: 0.5;
+  }
+
+  .elevation-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 0 0;
+    border-bottom: 1px solid var(--grid);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .elevation-row:hover {
+    background: rgba(255,255,255,0.02);
+  }
+
+  .elevation-row.is-self {
+    border-left: 2px solid var(--node-mintface);
+    padding-left: 12px;
+    background: rgba(232,201,122,0.03);
+  }
+
+  .elevation-collector {
+    font-size: 10px;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .elevation-bar-wrap {
+    position: relative;
+    height: 24px;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .elevation-bar {
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    transition: width 1s ease;
+  }
+
+  .elevation-fill {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right,
+      var(--elevation-low),
+      var(--elevation-mid),
+      var(--elevation-high),
+      var(--elevation-peak)
+    );
+  }
+
+  .elevation-peaks {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .elevation-peak-mark {
+    width: 2px;
+    background: rgba(122,232,160,0.6);
+    margin-right: 1px;
+  }
+
+  .elevation-collections {
+    position: absolute;
+    inset: 0;
+    display: flex;
+  }
+
+  .elevation-segment {
+    height: 100%;
+    border-right: 1px solid rgba(0,0,0,0.4);
+  }
+
+  .elevation-pct {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-dim);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .elevation-pct.complete {
+    color: var(--elevation-peak);
+  }
+
+  /* Elevation axis */
+  .elevation-axis {
+    padding: 20px 80px 0;
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    gap: 20px;
+  }
+
+  .elevation-axis-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 7px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+  }
+
+  /* ── AFFINITY SECTION ── */
+  #affinity {
+    background: var(--surface);
+  }
+
+  .affinity-panels {
+    padding: 0 80px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+  }
+
+  .affinity-panel {
+    background: rgba(255,255,255,0.02);
+    padding: 40px;
+    border: 1px solid var(--grid);
+    position: relative;
+  }
+
+  .affinity-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .affinity-panel.artblocks::before { background: var(--node-artblocks); }
+  .affinity-panel.photography::before { background: var(--node-photography); }
+  .affinity-panel.human::before { background: var(--node-human); }
+
+  .affinity-panel-eyebrow {
+    font-size: 7px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .affinity-panel.artblocks .affinity-panel-eyebrow { color: var(--node-artblocks); }
+  .affinity-panel.photography .affinity-panel-eyebrow { color: var(--node-photography); }
+  .affinity-panel.human .affinity-panel-eyebrow { color: var(--node-human); }
+
+  .affinity-panel-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--ink);
+    margin-bottom: 4px;
+    line-height: 1.1;
+  }
+
+  .affinity-panel-sub {
+    font-size: 8px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    margin-bottom: 28px;
+  }
+
+  .affinity-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--grid);
+    font-size: 9px;
+  }
+
+  .affinity-stat-label { color: var(--ink-faint); letter-spacing: 0.1em; }
+  .affinity-stat-value { color: var(--survey); }
+
+  .affinity-collectors {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .affinity-collectors::-webkit-scrollbar { width: 2px; }
+  .affinity-collectors::-webkit-scrollbar-track { background: transparent; }
+  .affinity-collectors::-webkit-scrollbar-thumb { background: var(--survey-dim); }
+
+  .affinity-collector-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 8px;
+  }
+
+  .affinity-collector-name {
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    font-size: 9px;
+  }
+
+  .affinity-collector-depth {
+    display: flex;
+    gap: 3px;
+  }
+
+  .depth-pip {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+  }
+
+  .depth-pip.artblocks { background: var(--node-artblocks); }
+  .depth-pip.photo { background: var(--node-photography); }
+  .depth-pip.human { background: var(--node-human); }
+  .depth-pip.empty { background: var(--grid-bright); }
+
+  /* ── LOADING STATE ── */
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--void);
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    transition: opacity 0.8s;
+  }
+
+  .loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .loading-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 300;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+  }
+
+  .loading-status {
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    height: 20px;
+  }
+
+  .loading-progress {
+    width: 200px;
+    height: 1px;
+    background: var(--grid-bright);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loading-bar {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    background: var(--survey);
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  /* survey crosshair on loading */
+  .loading-cross {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 8px;
+  }
+
+  .loading-cross::before,
+  .loading-cross::after {
+    content: '';
+    position: absolute;
+    background: var(--survey-dim);
+  }
+
+  .loading-cross::before { width: 1px; height: 100%; left: 50%; }
+  .loading-cross::after { width: 100%; height: 1px; top: 50%; }
+
+  .loading-cross-inner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--survey);
+    border-radius: 50%;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse 1.5s ease infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(2); opacity: 0.3; }
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    nav { padding: 16px 20px; }
+    .nav-links { display: none; }
+    .section-header { padding: 0 24px 40px; }
+    .section-title { font-size: 32px; }
+    .elevation-grid { padding: 0 24px; }
+    .elevation-axis { padding: 20px 24px 0; }
+    .affinity-panels { padding: 0 24px; grid-template-columns: 1fr; }
+    .hud-tr, .hud-bl, .hud-br { display: none; }
+    .legend { left: 20px; bottom: 60px; }
+  }
+
+  /* ── SEARCH BAR ── */
+  .terrain-search-wrap {
+    position: relative;
+    padding: 80px 80px 0;
+    background: var(--void);
+    z-index: 10;
+  }
+
+  .search-input {
+    width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--grid-bright);
+    border-left: 2px solid var(--survey-dim);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    padding: 14px 120px 14px 20px;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .search-input::placeholder {
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+  }
+
+  .search-input:focus {
+    border-color: var(--survey);
+    background: rgba(255,255,255,0.04);
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 88px;
+    top: 50%;
+    transform: translateY(calc(-50% + 40px));
+    background: none;
+    border: none;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 10px;
+    display: none;
+    line-height: 1;
+  }
+
+  .search-clear:hover { color: var(--survey); }
+
+  .search-count {
+    position: absolute;
+    right: 88px;
+    top: 50%;
+    transform: translateY(calc(-50% + 40px));
+    font-size: 8px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    pointer-events: none;
+  }
+
+
+  /* ── SEARCH DROPDOWN ── */
+  .search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: rgba(8,8,18,0.98);
+    border: 1px solid var(--grid-bright);
+    border-top: none;
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 500;
+    display: none;
+  }
+
+  .search-dropdown.visible { display: block; }
+
+  .search-dropdown::-webkit-scrollbar { width: 2px; }
+  .search-dropdown::-webkit-scrollbar-track { background: transparent; }
+  .search-dropdown::-webkit-scrollbar-thumb { background: var(--survey-dim); }
+
+  .dropdown-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--grid);
+    transition: background 0.1s;
+  }
+
+  .dropdown-item:last-child { border-bottom: none; }
+
+  .dropdown-item:hover,
+  .dropdown-item.active {
+    background: rgba(196,168,130,0.08);
+  }
+
+  .dropdown-item-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dropdown-item-name em {
+    font-style: normal;
+    color: var(--ink);
+    background: rgba(196,168,130,0.2);
+    padding: 0 2px;
+  }
+
+  .dropdown-item-tags {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .dropdown-tag {
+    font-size: 7px;
+    letter-spacing: 0.1em;
+    padding: 2px 5px;
+    border: 1px solid;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .dropdown-empty {
+    padding: 16px 20px;
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+  }
+  .elevation-row.hidden { display: none; }
+  .elevation-row.search-highlight {
+    background: rgba(196,168,130,0.1);
+    border-left: 2px solid var(--survey);
+    padding-left: 12px;
+  }
+
+  @media (max-width: 768px) {
+    .terrain-search-wrap { padding: 70px 24px 0; }
+    .search-clear { right: 32px; }
+    .search-count { right: 32px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loader">
+  <div class="loading-cross"><div class="loading-cross-inner"></div></div>
+  <div class="loading-title">Surveying the Terrain</div>
+  <div class="loading-status" id="loader-status">Initialising...</div>
+  <div class="loading-progress"><div class="loading-bar" id="loader-bar"></div></div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <div class="tooltip-name" id="tt-name"></div>
+  <div class="tooltip-row"><span>MintFace holds</span><span id="tt-mf-count"></span></div>
+  <div class="tooltip-row"><span>Collections</span><span id="tt-collections"></span></div>
+  <div class="tooltip-row" id="tt-affinity-row" style="display:none"><span>Affinity</span><span id="tt-affinity"></span></div>
+  <div class="tooltip-collections" id="tt-tags"></div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <a href="https://mintface.art" class="nav-brand">
+    <span class="nav-brand-title">MintFace</span>
+    <span class="nav-brand-sub">Collector Terrain</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#terrain">Terrain</a></li>
+    <li><a href="#elevation">Elevation</a></li>
+
+  </ul>
+  <div class="nav-right">
+    <button id="wallet-btn" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+</nav>
+
+<!-- ── SEARCH BAR ── -->
+<div class="terrain-search-wrap">
+  <input
+    class="search-input terrain-search-input"
+    id="collector-search"
+    type="text"
+    placeholder="Search collector — ENS name or wallet address..."
+    oninput="filterElevation(this.value)"
+    onkeydown="searchKeyNav(event)"
+    autocomplete="off"
+    spellcheck="false"
+  />
+  <span class="search-count" id="search-count"></span>
+  <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
+  <div class="search-dropdown" id="search-dropdown"></div>
+</div>
+
+<!-- ── TERRAIN ── -->
+<!-- ── COLLECTION NODE CARD ── -->
+<div class="collection-card" id="collection-card"
+  onmouseenter="clearTimeout(state && state.cardHideTimer)"
+  onmouseleave="state.cardHideTimer = setTimeout(hideCollectionCard, 150)">
+  <div class="collection-card-stripe" id="cc-stripe"></div>
+  <div class="collection-card-body">
+    <div class="collection-card-eyebrow" id="cc-eyebrow"></div>
+    <div class="collection-card-title" id="cc-title"></div>
+    <div class="collection-card-desc" id="cc-desc"></div>
+    <div class="collection-card-stats">
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Artworks</div>
+        <div class="collection-card-stat-value" id="cc-artworks"></div>
+      </div>
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Chain</div>
+        <div class="collection-card-stat-value" id="cc-chain"></div>
+      </div>
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Medium</div>
+        <div class="collection-card-stat-value" id="cc-medium"></div>
+      </div>
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Collectors</div>
+        <div class="collection-card-stat-value" id="cc-collectors"></div>
+      </div>
+    </div>
+    <a class="collection-card-link" id="cc-link" href="#" target="_blank" rel="noopener">View Collection →</a>
+  </div>
+</div>
+
+<!-- ── SELECTED COLLECTOR CARD ── -->
+<div id="selected-card">
+  <div class="selected-card-inner">
+    <div>
+      <div class="selected-card-eyebrow">Selected Collector</div>
+      <div class="selected-card-name" id="sc-name">—</div>
+    </div>
+    <div>
+      <div id="sc-bar-wrap" class="elevation-bar-wrap" style="margin:0">
+        <div class="elevation-bar" id="sc-bar" style="width:0%">
+          <div class="elevation-fill"></div>
+          <div class="elevation-collections" id="sc-segs"></div>
+        </div>
+      </div>
+      <div class="selected-card-tags" id="sc-tags"></div>
+    </div>
+    <div>
+      <div class="elevation-pct" id="sc-pct">—</div>
+      <div class="selected-card-dismiss" id="sc-dismiss" onclick="deselect()">× clear</div>
+    </div>
+  </div>
+</div>
+
+<section id="terrain">
+  <svg id="terrain-svg"></svg>
+
+  <div class="hud hud-tl">
+    <span class="hud-coord" id="hud-collectors">— collectors</span>
+    <span class="hud-coord" id="hud-collections">— collections</span>
+
+  </div>
+
+  <div class="hud hud-tr">
+    <span class="hud-coord">36°51'S 174°45'E</span>
+    <span class="hud-coord">Auckland — NZ</span>
+    <span class="hud-coord" id="hud-time"></span>
+  </div>
+
+  <div class="hud hud-br">
+    <span class="hud-coord">Survey Grid 1:2400</span>
+    <span class="hud-coord">WGS84 / UTM Zone 60S</span>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-mintface)"></div>
+      MintFace collector
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="width:12px;height:12px;background:none;border:2px solid var(--survey)"></div>
+      Collection anchor
+    </div>
+
+  </div>
+</section>
+
+<!-- ── ELEVATION ── -->
+<section id="elevation">
+  <div class="section-header">
+    <div>
+      <div class="section-eyebrow">Vertical Set</div>
+      <h2 class="section-title">Elevation<br><em>Profile</em></h2>
+    </div>
+    <div class="section-meta">
+      <div>Completion = 1 work from each collection</div>
+      <div>8 collections · Full ridge = 100%</div>
+    </div>
+  </div>
+
+  <div class="elevation-axis">
+    <div></div>
+    <div class="elevation-axis-labels">
+      <span>0m</span>
+      <span>BASECAMP</span>
+      <span>RIDGE</span>
+      <span>PEAK</span>
+      <span>SUMMIT</span>
+    </div>
+    <div></div>
+  </div>
+
+  <div class="elevation-grid" id="elevation-grid">
+    <!-- Populated by JS -->
+  </div>
+</section>
+
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DATA — Contract addresses & collection config
+// ═══════════════════════════════════════════════════════════════
+
+const MINTFACE_COLLECTIONS = [
+  { id: 'artificial-flowers', name: 'Artificial Flowers', year: 2025, contract: '0xd64ac59835a9951f34472239ba70b44c5bebe90d', chain: 'ethereum', artworks: 21,  medium: 'Neural Painting',  desc: 'Hand-painted works merged with AI and augmented reality — flowers that exist between the physical and the digital.' },
+  { id: 'patrimora',          name: 'Patrimora',          year: 2025, contract: '0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8', chain: 'ethereum', artworks: 469, medium: 'Generative Art',   desc: 'A generative exploration of inherited identity — 469 unique works derived from a single patrilineal algorithm.' },
+  { id: 'two-burdens',        name: 'Two Burdens',        year: 2024, contract: '0xe1d1f99505a13d20b25d5ef32280771d7eb5ed09', chain: 'ethereum', artworks: 36,  medium: 'Painting',        desc: 'Large-scale oil paintings confronting the weight of modern existence — exhibited at NFT NYC 2024 and The Line, NZ.' },
+  { id: 'recursive-mind',     name: 'Recursive Mind',     year: 2023, contract: null,                                           chain: 'bitcoin',  artworks: 8,   medium: 'Illustration',    desc: 'Eight hand-drawn illustrations inscribed on Bitcoin Ordinals — a meditation on self-referential thought.' },
+  { id: 'geodetica',          name: 'Geodetica',          year: 2022, contract: '0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933', chain: 'ethereum', artworks: 100, medium: 'Pure AI',          desc: '100 AI-generated works mapping imaginary geological survey territories — the first MintFace AI collection.' },
+  { id: 'roads-rivers',       name: 'Roads & Rivers',     year: 2022, contract: '0x18bd004e13258f569cedfbb537ba329e4730ee67', chain: 'ethereum', artworks: 40,  medium: 'Photography',     desc: '40 photographs tracing the infrastructural veins of the landscape — roads and waterways as abstract systems.' },
+  { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum', artworks: 100, medium: 'Photography',     desc: '100 photographic moments captured across New Zealand terrain — the founding MintFace collection.' },
+  { id: 'geodetic-home',      name: 'Editions',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum', artworks: 5,   medium: 'Editions',       desc: 'Five on-chain edition works — geodetic survey markers tokenized as ERC-1155 collectibles on Ethereum.' },
+];
+
+// Per-collection color + OpenSea URL
+const COLLECTION_META = {
+  'artificial-flowers': { color: '#e87a9e', bg: 'rgba(232,122,158,0.15)', border: 'rgba(232,122,158,0.4)', url: 'https://opensea.io/collection/artificial-flower' },
+  'patrimora':          { color: '#7a9ee8', bg: 'rgba(122,158,232,0.15)', border: 'rgba(122,158,232,0.4)', url: 'https://patrimora.com' },
+  'two-burdens':        { color: '#e8c97a', bg: 'rgba(232,201,122,0.15)', border: 'rgba(232,201,122,0.4)', url: 'https://opensea.io/collection/two-burdens' },
+  'recursive-mind':     { color: '#c47ae8', bg: 'rgba(196,122,232,0.15)', border: 'rgba(196,122,232,0.4)', url: 'https://gamma.io/ordinals/collections/recursive-mind/items' },
+  'geodetica':          { color: '#7ae8c4', bg: 'rgba(122,232,196,0.15)', border: 'rgba(122,232,196,0.4)', url: 'https://opensea.io/collection/geodetica' },
+  'roads-rivers':       { color: '#e8a87a', bg: 'rgba(232,168,122,0.15)', border: 'rgba(232,168,122,0.4)', url: 'https://opensea.io/collection/roads-and-rivers' },
+  'geodetic-moments':   { color: '#a8e87a', bg: 'rgba(168,232,122,0.15)', border: 'rgba(168,232,122,0.4)', url: 'https://opensea.io/collection/geodetic-moments' },
+  'geodetic-home':      { color: '#7ac4e8', bg: 'rgba(122,196,232,0.15)', border: 'rgba(122,196,232,0.4)', url: 'https://opensea.io/collection/geodetic' },
+};
+
+// Short display names for tags
+const COLLECTION_SHORT = {
+  'artificial-flowers': 'Artificial Flowers',
+  'patrimora':          'Patrimora',
+  'two-burdens':        'Two Burdens',
+  'recursive-mind':     'Recursive Mind',
+  'geodetica':          'Geodetica',
+  'roads-rivers':       'Roads & Rivers',
+  'geodetic-moments':   'Moments',
+  'geodetic-home':      'Editions',
+};
+
+// Art Blocks Curated — factory contract + key project IDs
+// These project IDs map to token ranges: projectId * 1,000,000 to (projectId+1)*1,000,000 - 1
+const AB_FACTORY = '0xa7d8d9ef8d8ce8992df33d8b8cf4aebabd5bd270';
+const AB_V3 = '0x99a9b7c1116f9ceeb1652de04d5969cce509b069';
+const AB_CURATED_SLUGS = [
+  'chromie-squiggle-by-snowfro',
+  'fidenza-by-tyler-hobbs',
+  'ringers-by-dmitri-cherniak',
+  'archetype-by-kjetil-golid',
+  'meridian-by-matt-deslauriers',
+  'algobots-by-stina-jones',
+  'subscapes-by-matt-deslauriers',
+  'geometry-runners-by-rich-lord',
+  'incomplete-control-by-aaron-penne',
+  'elevated-deconstructions-by-luxpris',
+  'loom-by-anna-lucia',
+  'cellular-automata-by-hideo-matsuzaki',
+  'flow-field-by-phil-linden',
+  'bytebeats-by-dan-gries',
+  'vvttmmnn-by-alexis-andre',
+  'the-wrong-crowd-by-simon-de-la-rouviere',
+  'century-rings-by-snowfro',
+  'overnight-by-casey-reas',
+  'memories-of-qilin-by-emily-xie',
+  'grids-by-zeblocks',
+];
+
+// Apocalypse contracts
+const APOCALYPSE_CONTRACTS = [
+  { name: 'Meetings',    contract: '0x2318954d3add6175545d482bd648093740201805' },
+  { name: 'The Origins', contract: '0x486f86728ba157cbd21f71cee7ff895e2892f9d6' },
+  { name: 'Oversoul',    contract: '0x8fb9051d464ef8fed7832e05bacc675699a84401' },
+];
+
+// Underscore contracts
+const UNDERSCORE_CONTRACTS = [
+  { name: 'Underscore 1', contract: '0x3595c12c205bcb1e1db87800084e604943ebbb47' },
+  { name: 'Underscore 2', contract: '0xea67bec2189F6bACaA974c07A922cB82cbcB7802' },
+  { name: 'Underscore 3', contract: '0xbfdb529c8abb6f81b6d14d2751fc9d8bdbcf9bd9' },
+];
+
+// Haffkta contracts
+const HAFFKTA_CONTRACTS = [
+  { name: 'Declaration of Independence', contract: '0x530e295f7226ebb8e8021f87ea6dcc0d52c6da29' },
+  { name: 'Bullpen',                      contract: '0x4365b5313efbff83e8e112a8519998e6677ebb70' },
+];
+
+// Photography icons from MintFace Private Collection list
+const PHOTO_ARTISTS = [
+  'alejandro-cartegna', 'andginja', 'andre-messina', 'ben-zank',
+  'billy-dinh', 'brian-minear', 'cath-simard', 'chi-modu',
+  'colorworks', 'cowboy-killer', 'david-loh', 'drifter-shoots',
+  'ella-morton', 'guido', 'gustavo-mondragon', 'hans-kemp',
+  'imed-kolli', 'joelle-b', 'justin-aversano', 'marat-safin',
+  'meeshuno', 'mellback', 'on-the-roofs', 'reuben-wu',
+  'roberto-alcarez', 'sergio-antoni', 'timmboslice', 'tokyoluv',
+  'tony-sellen', 'tylers-journey', 'zay-yar-lin', 'zigmarillion',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+
+let state = {
+  collectors: new Map(),    // wallet -> { ens, mintfaceHolds[], affinityHolds{} }
+  connectedWallet: null,
+  graphNodes: [],
+  graphLinks: [],
+};
+
+// ═══════════════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+async function openSeaFetch(path, params = {}) {
+  const qs = new URLSearchParams({ path, ...params }).toString();
+  const res = await fetch(`/api/opensea?${qs}`);
+  if (!res.ok) throw new Error(`OpenSea ${res.status}: ${path}`);
+  return res.json();
+}
+
+async function resolveENS(address) {
+  try {
+    const res = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
+    const data = await res.json();
+    return data.name || truncateAddress(address);
+  } catch {
+    return truncateAddress(address);
+  }
+}
+
+function truncateAddress(addr) {
+  if (!addr) return '—';
+  return `${addr.slice(0,6)}...${addr.slice(-4)}`;
+}
+
+// Get all NFT holders for a contract
+async function getHolders(contract, chain = 'ethereum', limit = 200) {
+  const holders = new Set();
+  let next = null;
+  let page = 0;
+  do {
+    const params = { limit: 50 };
+    if (next) params.next = next;
+    try {
+      const data = await openSeaFetch(`chain/${chain}/contract/${contract}/nfts`, params);
+      (data.nfts || []).forEach(nft => {
+        if (nft.owners) nft.owners.forEach(o => holders.add(o.address.toLowerCase()));
+      });
+      next = data.next;
+      page++;
+    } catch (e) {
+      console.warn('getHolders error:', e);
+      break;
+    }
+  } while (next && holders.size < limit && page < 10);
+  return holders;
+}
+
+// Check if a wallet holds from a list of contracts/slugs
+async function checkAffinityContracts(wallet, contracts) {
+  let count = 0;
+  const held = [];
+  for (const { name, contract } of contracts) {
+    try {
+      const data = await openSeaFetch(`chain/ethereum/account/${wallet}/nfts`, {
+        collection: contract,
+        limit: 1
+      });
+      if (data.nfts && data.nfts.length > 0) {
+        count++;
+        held.push(name);
+      }
+    } catch {}
+  }
+  return { count, held };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEMO DATA — used when API not yet loaded / for initial render
+// ═══════════════════════════════════════════════════════════════
+
+function generateDemoData() {
+  const names = [
+    'snowfro.eth','punk6529.eth','cozomo.eth','pranksy.eth','gmoney.eth',
+    'richerd.eth','dingaling.eth','beanie.eth','j1mmy.eth','punk4156.eth',
+    'seedphrase.eth','slimesunday.eth','hackatao.eth','xcopy.eth','pak.eth',
+    'refik.eth','tyler.eth','dmitri.eth','kjetil.eth','anna.eth',
+    '0x3f2a...b91c','0x8d4e...f22a','0x1c9b...4401','0xa77f...cc03','0x5512...de88',
+  ];
+
+  const mfCollections = MINTFACE_COLLECTIONS.map(c => c.id);
+  const collectors = new Map();
+
+  names.forEach((name, i) => {
+    const holdCount = Math.floor(Math.random() * 5) + 1;
+    const shuffled = [...mfCollections].sort(() => Math.random() - 0.5);
+    const holds = shuffled.slice(0, holdCount);
+
+    const hasAB = Math.random() > 0.5 && holds.includes('patrimora');
+    const hasPhoto = Math.random() > 0.5 && holds.includes('geodetic-moments');
+    const hasHuman = Math.random() > 0.5 && holds.includes('two-burdens');
+
+    collectors.set(name, {
+      ens: name,
+      address: `0x${Math.random().toString(16).slice(2,12)}`,
+      mintfaceHolds: holds,
+      affinityHolds: {
+        artblocks: hasAB ? Math.floor(Math.random() * 5) + 1 : 0,
+        photography: hasPhoto ? Math.floor(Math.random() * 4) + 1 : 0,
+        human: hasHuman ? Math.floor(Math.random() * 3) + 1 : 0,
+      }
+    });
+  });
+
+  return collectors;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TERRAIN GRAPH — D3 Force
+// ═══════════════════════════════════════════════════════════════
+
+function buildGraph(collectors) {
+  const nodes = [];
+  const links = [];
+
+  // Collection anchor nodes
+  MINTFACE_COLLECTIONS.forEach((col, i) => {
+    nodes.push({
+      id: col.id,
+      type: 'collection',
+      label: col.name,
+      year: col.year,
+      r: 18,
+    });
+  });
+
+  // Collector nodes
+  collectors.forEach((data, ens) => {
+    const nodeId = `collector-${ens}`;
+    nodes.push({
+      id: nodeId,
+      type: 'collector',
+      label: data.ens,
+      address: data.address,
+      holds: data.mintfaceHolds,
+      affinity: data.affinityHolds,
+      r: 5 + data.mintfaceHolds.length * 1.5,
+    });
+
+    // Links to each MintFace collection they hold
+    data.mintfaceHolds.forEach(colId => {
+      links.push({
+        source: nodeId,
+        target: colId,
+        type: 'hold',
+      });
+    });
+
+    // Affinity links removed — MintFace collections only
+  });
+
+  return { nodes, links };
+}
+
+function renderTerrain(collectors) {
+  const svg = d3.select('#terrain-svg');
+  svg.selectAll('*').remove();
+
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  // Survey grid
+  const gridG = svg.append('g').attr('class', 'grid');
+  const gridSpacing = 80;
+
+  for (let x = 0; x < W; x += gridSpacing) {
+    gridG.append('line')
+      .attr('class', x % (gridSpacing * 5) === 0 ? 'grid-line-bright' : 'grid-line')
+      .attr('x1', x).attr('y1', 0).attr('x2', x).attr('y2', H);
+  }
+  for (let y = 0; y < H; y += gridSpacing) {
+    gridG.append('line')
+      .attr('class', y % (gridSpacing * 5) === 0 ? 'grid-line-bright' : 'grid-line')
+      .attr('x1', 0).attr('y1', y).attr('x2', W).attr('y2', y);
+  }
+
+  // Survey tick marks at intersections
+  for (let x = 0; x < W; x += gridSpacing * 5) {
+    for (let y = 0; y < H; y += gridSpacing * 5) {
+      gridG.append('line').attr('class','survey-tick')
+        .attr('x1', x-4).attr('y1', y).attr('x2', x+4).attr('y2', y);
+      gridG.append('line').attr('class','survey-tick')
+        .attr('x1', x).attr('y1', y-4).attr('x2', x).attr('y2', y+4);
+    }
+  }
+
+  const { nodes, links } = buildGraph(collectors);
+  state.graphNodes = nodes;
+  state.graphLinks = links;
+
+  // D3 force simulation
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
+      if (d.type === 'hold') return 60 + Math.random() * 40;
+      return 120;
+    }).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(d => d.type === 'collection' ? -400 : -80))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide().radius(d => d.r + 8))
+    .alphaDecay(0.02);
+
+  const mainG = svg.append('g').attr('class', 'main');
+
+  // Zoom — store on state so selectCollector can pan programmatically
+  state.zoom = d3.zoom()
+    .scaleExtent([0.3, 3])
+    .on('zoom', (event) => mainG.attr('transform', event.transform));
+  svg.call(state.zoom);
+
+  // Click on empty terrain → deselect
+  svg.on('click', (event) => {
+    if (event.target === svg.node() || event.target.closest('.grid') || event.target.tagName === 'line') {
+      deselect();
+    }
+  });
+
+  // Links
+  const linkG = mainG.append('g').attr('class', 'links');
+  const linkSel = linkG.selectAll('line')
+    .data(links)
+    .join('line')
+    .attr('class', d => `edge-${d.type}`);
+
+  // Collection nodes
+  const collectionG = mainG.append('g').attr('class', 'collections');
+  const colNodes = nodes.filter(d => d.type === 'collection');
+
+  const colSel = collectionG.selectAll('.collection-node')
+    .data(colNodes)
+    .join('g')
+    .attr('class', 'collection-node');
+
+  colSel.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => (COLLECTION_META[d.id] || {}).bg || 'rgba(196,168,130,0.15)')
+    .attr('stroke', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
+    .attr('stroke-width', 2);
+
+  // Inner diamond
+  colSel.append('polygon')
+    .attr('points', d => {
+      const r = d.r * 0.5;
+      return `0,${-r} ${r},0 0,${r} ${-r},0`;
+    })
+    .attr('fill', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
+    .attr('opacity', 0.8);
+
+  colSel.append('text')
+    .attr('class', 'cluster-label-main')
+    .attr('y', d => -(d.r + 8))
+    .attr('text-anchor', 'middle')
+    .attr('fill', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
+    .text(d => COLLECTION_SHORT[d.id] || d.label);
+
+  colSel.append('text')
+    .attr('class', 'cluster-label')
+    .attr('y', d => d.r + 16)
+    .attr('text-anchor', 'middle')
+    .text(d => d.year);
+
+  colSel
+    .style('cursor', 'pointer')
+    .on('click', (event, d) => { event.stopPropagation(); showCollectionCard(event, d); })
+    .on('mouseenter', (event, d) => { clearTimeout(state.cardHideTimer); showCollectionCard(event, d); })
+    .on('mouseleave', () => { state.cardHideTimer = setTimeout(hideCollectionCard, 300); });
+
+  // Collector nodes
+  const collectorG = mainG.append('g').attr('class', 'collectors');
+  const collectorsData = nodes.filter(d => d.type === 'collector');
+
+  const collectorSel = collectorG.selectAll('.collector-node')
+    .data(collectorsData)
+    .join('g')
+    .attr('class', 'collector-node')
+    .attr('data-id', d => d.id)
+    .on('mouseover', showTooltip)
+    .on('mousemove', moveTooltip)
+    .on('mouseout', hideTooltip)
+    .on('click', (event, d) => { event.stopPropagation(); highlightCollector(d); });
+
+  collectorSel.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', 'var(--node-mintface)')
+    .attr('fill-opacity', 0.6)
+    .attr('stroke', 'rgba(232,201,122,0.35)')
+    .attr('stroke-width', 1);
+
+  collectorSel.append('text')
+    .attr('y', d => d.r + 12)
+    .attr('text-anchor', 'middle')
+    .text(d => {
+      const label = d.label || '';
+      if (label.length <= 14) return label;
+      // ENS names: truncate end
+      if (label.includes('.eth') || !label.startsWith('0x')) {
+        return label.slice(0, 12) + '…';
+      }
+      // Wallet address: truncate middle — show 0x1234…5678
+      return label.slice(0, 6) + '…' + label.slice(-4);
+    });
+
+  // Tick
+  simulation.on('tick', () => {
+    linkSel
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y);
+
+    colSel.attr('transform', d => `translate(${d.x},${d.y})`);
+    collectorSel.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  // HUD stats
+  document.getElementById('hud-collectors').textContent = `${collectorsData.length} collectors`;
+  document.getElementById('hud-collections').textContent = `${colNodes.length} collections`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════════════════════════════
+
+function showTooltip(event, d) {
+  const tt = document.getElementById('tooltip');
+  document.getElementById('tt-name').textContent = d.label;
+  document.getElementById('tt-mf-count').textContent = `${d.holds.length} work${d.holds.length !== 1 ? 's' : ''}`;
+  document.getElementById('tt-collections').textContent = d.holds.length;
+
+  const affinities = [];
+  if (d.affinity.artblocks > 0) affinities.push('Art Blocks');
+  if (d.affinity.photography > 0) affinities.push('Photography');
+  if (d.affinity.human > 0) affinities.push('Human Condition');
+
+  const affinityRow = document.getElementById('tt-affinity-row');
+  if (affinities.length > 0) {
+    document.getElementById('tt-affinity').textContent = affinities.join(' · ');
+    affinityRow.style.display = 'flex';
+  } else {
+    affinityRow.style.display = 'none';
+  }
+
+  const tagsDiv = document.getElementById('tt-tags');
+  tagsDiv.innerHTML = '';
+  d.holds.forEach(colId => {
+    const col = MINTFACE_COLLECTIONS.find(c => c.id === colId);
+    const meta = COLLECTION_META[colId] || {};
+    if (col) {
+      const tag = document.createElement('div');
+      tag.className = 'tooltip-tag';
+      tag.textContent = COLLECTION_SHORT[colId] || col.name;
+      tag.style.color = meta.color || 'var(--survey)';
+      tag.style.borderColor = meta.border || 'var(--survey-dim)';
+      tag.style.background = meta.bg || 'transparent';
+      tagsDiv.appendChild(tag);
+    }
+  });
+
+  if (d.affinity.artblocks > 0) {
+    const t = document.createElement('div');
+    t.className = 'tooltip-tag affinity-tag';
+    t.textContent = `AB ×${d.affinity.artblocks}`;
+    tagsDiv.appendChild(t);
+  }
+  if (d.affinity.photography > 0) {
+    const t = document.createElement('div');
+    t.className = 'tooltip-tag affinity-tag photo';
+    t.textContent = `Photo ×${d.affinity.photography}`;
+    tagsDiv.appendChild(t);
+  }
+  if (d.affinity.human > 0) {
+    const t = document.createElement('div');
+    t.className = 'tooltip-tag affinity-tag human';
+    t.textContent = `HC ×${d.affinity.human}`;
+    tagsDiv.appendChild(t);
+  }
+
+  tt.classList.add('visible');
+  moveTooltip(event);
+}
+
+function moveTooltip(event) {
+  const tt = document.getElementById('tooltip');
+  const x = event.clientX + 16;
+  const y = event.clientY - 10;
+  tt.style.left = Math.min(x, window.innerWidth - 300) + 'px';
+  tt.style.top = Math.max(y, 10) + 'px';
+}
+
+function hideTooltip() {
+  document.getElementById('tooltip').classList.remove('visible');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ELEVATION
+// ═══════════════════════════════════════════════════════════════
+
+function renderElevation(collectors, connectedWallet = null) {
+  const grid = document.getElementById('elevation-grid');
+  grid.innerHTML = '';
+
+  const colCount = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract).length;
+
+  // Sort by completion %
+  const sorted = [...collectors.entries()].sort((a, b) => {
+    return b[1].mintfaceHolds.length - a[1].mintfaceHolds.length;
+  });
+
+  sorted.forEach(([address, data]) => {
+    const displayName = data.ens || address;
+    const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
+    const isSelf = connectedWallet && (address === connectedWallet || displayName === connectedWallet);
+
+    const row = document.createElement('div');
+    row.className = `elevation-row${isSelf ? ' is-self' : ''}`;
+    row.dataset.address = address;
+    row.dataset.ens = displayName;
+
+    // Name
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'elevation-collector';
+    nameDiv.textContent = isSelf ? `▶ ${displayName}` : displayName;
+    row.appendChild(nameDiv);
+
+    // Bar
+    const barWrap = document.createElement('div');
+    barWrap.className = 'elevation-bar-wrap';
+
+    const bar = document.createElement('div');
+    bar.className = 'elevation-bar';
+    bar.style.width = '0%';
+
+    const fill = document.createElement('div');
+    fill.className = 'elevation-fill';
+    bar.appendChild(fill);
+
+    // Collection segments overlay
+    const segs = document.createElement('div');
+    segs.className = 'elevation-collections';
+    MINTFACE_COLLECTIONS.forEach(col => {
+      const seg = document.createElement('div');
+      seg.className = 'elevation-segment';
+      seg.style.width = `${100 / colCount}%`;
+      seg.style.background = data.mintfaceHolds.includes(col.id)
+        ? `rgba(122,232,160,0.15)`
+        : 'transparent';
+      segs.appendChild(seg);
+    });
+    bar.appendChild(segs);
+    barWrap.appendChild(bar);
+    row.appendChild(barWrap);
+
+    // Pct
+    const pctDiv = document.createElement('div');
+    pctDiv.className = `elevation-pct${pct === 100 ? ' complete' : ''}`;
+    pctDiv.textContent = `${pct}%`;
+    row.appendChild(pctDiv);
+
+    // Missing collections — tags linking to OpenSea
+    const ethCollections = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract);
+    const missing = ethCollections.filter(col => !data.mintfaceHolds.includes(col.id));
+    if (missing.length > 0) {
+      const missingDiv = document.createElement('div');
+      missingDiv.className = 'elevation-missing';
+      missing.forEach(col => {
+        const meta = COLLECTION_META[col.id] || {};
+        const a = document.createElement('a');
+        a.className = 'elevation-missing-tag';
+        a.href = meta.url || 'https://opensea.io/mintface';
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = COLLECTION_SHORT[col.id] || col.name;
+        a.style.color = meta.color || 'var(--ink-faint)';
+        a.style.borderColor = meta.border || 'var(--grid-bright)';
+        a.style.background = meta.bg || 'transparent';
+        missingDiv.appendChild(a);
+      });
+      // span all 3 columns
+      missingDiv.style.gridColumn = '1 / -1';
+      row.appendChild(missingDiv);
+    }
+
+    grid.appendChild(row);
+
+    // Animate bar in
+    setTimeout(() => { bar.style.width = `${pct}%`; }, 100);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AFFINITY PANELS
+// ═══════════════════════════════════════════════════════════════
+
+function renderAffinity(collectors) {
+  // Art Blocks (Patrimora holders)
+  const patrimHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('patrimora'));
+  const abOverlap = patrimHolders.filter(([, d]) => d.affinityHolds.artblocks > 0);
+  document.getElementById('ab-overlap').textContent = `${abOverlap.length} / ${patrimHolders.length}`;
+  const abProjects = abOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.artblocks, 0);
+  document.getElementById('ab-projects').textContent = abProjects;
+  const abDeepest = abOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.artblocks), 0);
+  document.getElementById('ab-depth').textContent = `${abDeepest} projects`;
+
+  const abList = document.getElementById('ab-collectors');
+  abList.innerHTML = '';
+  abOverlap.sort((a, b) => b[1].affinityHolds.artblocks - a[1].affinityHolds.artblocks).forEach(([ens, d]) => {
+    const r = document.createElement('div');
+    r.className = 'affinity-collector-row';
+    const name = document.createElement('div');
+    name.className = 'affinity-collector-name';
+    name.textContent = ens;
+    const depth = document.createElement('div');
+    depth.className = 'affinity-collector-depth';
+    for (let i = 0; i < Math.min(d.affinityHolds.artblocks, 8); i++) {
+      const pip = document.createElement('div');
+      pip.className = 'depth-pip artblocks';
+      depth.appendChild(pip);
+    }
+    r.appendChild(name); r.appendChild(depth);
+    abList.appendChild(r);
+  });
+  if (abOverlap.length === 0) abList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
+
+  // Photography (Geodetic Moments holders)
+  const geoHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('geodetic-moments'));
+  const phOverlap = geoHolders.filter(([, d]) => d.affinityHolds.photography > 0);
+  document.getElementById('ph-overlap').textContent = `${phOverlap.length} / ${geoHolders.length}`;
+  const phArtists = phOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.photography, 0);
+  document.getElementById('ph-artists').textContent = phArtists;
+  const phDeepest = phOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.photography), 0);
+  document.getElementById('ph-depth').textContent = `${phDeepest} artists`;
+
+  const phList = document.getElementById('ph-collectors');
+  phList.innerHTML = '';
+  phOverlap.sort((a, b) => b[1].affinityHolds.photography - a[1].affinityHolds.photography).forEach(([ens, d]) => {
+    const r = document.createElement('div');
+    r.className = 'affinity-collector-row';
+    const name = document.createElement('div');
+    name.className = 'affinity-collector-name';
+    name.textContent = ens;
+    const depth = document.createElement('div');
+    depth.className = 'affinity-collector-depth';
+    for (let i = 0; i < Math.min(d.affinityHolds.photography, 8); i++) {
+      const pip = document.createElement('div');
+      pip.className = 'depth-pip photo';
+      depth.appendChild(pip);
+    }
+    r.appendChild(name); r.appendChild(depth);
+    phList.appendChild(r);
+  });
+  if (phOverlap.length === 0) phList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
+
+  // Human Condition (Two Burdens holders)
+  const tbHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('two-burdens'));
+  const hcOverlap = tbHolders.filter(([, d]) => d.affinityHolds.human > 0);
+  document.getElementById('hc-overlap').textContent = `${hcOverlap.length} / ${tbHolders.length}`;
+  const hcSeries = hcOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.human, 0);
+  document.getElementById('hc-series').textContent = hcSeries;
+  const hcDeepest = hcOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.human), 0);
+  document.getElementById('hc-depth').textContent = `${hcDeepest} series`;
+
+  const hcList = document.getElementById('hc-collectors');
+  hcList.innerHTML = '';
+  hcOverlap.sort((a, b) => b[1].affinityHolds.human - a[1].affinityHolds.human).forEach(([ens, d]) => {
+    const r = document.createElement('div');
+    r.className = 'affinity-collector-row';
+    const name = document.createElement('div');
+    name.className = 'affinity-collector-name';
+    name.textContent = ens;
+    const depth = document.createElement('div');
+    depth.className = 'affinity-collector-depth';
+    for (let i = 0; i < Math.min(d.affinityHolds.human, 8); i++) {
+      const pip = document.createElement('div');
+      pip.className = 'depth-pip human';
+      depth.appendChild(pip);
+    }
+    r.appendChild(name); r.appendChild(depth);
+    hcList.appendChild(r);
+  });
+  if (hcOverlap.length === 0) hcList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WALLET CONNECT (Privy)
+// ═══════════════════════════════════════════════════════════════
+
+let privyClient = null;
+
+async function connectWallet() {
+  const btn = document.getElementById('wallet-btn');
+
+  // If already connected, show info
+  if (state.connectedWallet) {
+    alert(`Connected: ${state.connectedWallet}`);
+    return;
+  }
+
+  // Privy — initialise if needed
+  // In production, replace APP_ID with your Privy app ID
+  // For now we use a direct wallet connect via window.ethereum
+  if (window.ethereum) {
+    try {
+      btn.textContent = 'Connecting...';
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const wallet = accounts[0].toLowerCase();
+
+      // Resolve ENS
+      const ens = await resolveENS(wallet);
+      state.connectedWallet = ens;
+
+      btn.textContent = ens.length > 16 ? ens.slice(0,14)+'…' : ens;
+      btn.classList.add('connected');
+
+      // Find this collector in the map
+      highlightWalletInTerrain(wallet, ens);
+      scrollToCollector(ens);
+
+    } catch (e) {
+      console.error(e);
+      btn.textContent = 'Connect Wallet';
+    }
+  } else {
+    // No wallet detected — prompt Privy iframe flow
+    btn.textContent = 'No wallet found';
+    setTimeout(() => btn.textContent = 'Connect Wallet', 2000);
+  }
+}
+
+function highlightWalletInTerrain(wallet, ens) {
+  // Try address match first, then ENS label match
+  let matchedAddress = null;
+  state.collectors.forEach((data, addr) => {
+    if (addr === wallet || data.ens === ens || data.ens === wallet) {
+      matchedAddress = addr;
+    }
+  });
+
+  if (matchedAddress) {
+    // Full focus mode — pulse, dim others, highlight elevation
+    selectCollector(matchedAddress);
+  } else {
+    // Wallet connected but not a collector yet — still update button
+    console.log('Wallet connected but not found in collector snapshot:', wallet);
+  }
+}
+
+function scrollToCollector(ens) {
+  const elevationSection = document.getElementById('elevation');
+  if (elevationSection) {
+    setTimeout(() => elevationSection.scrollIntoView({ behavior: 'smooth' }), 500);
+  }
+}
+
+function showCollectionCard(event, d) {
+  const col = MINTFACE_COLLECTIONS.find(c => c.id === d.id);
+  if (!col) return;
+  const meta = COLLECTION_META[d.id] || {};
+
+  // Count collectors who hold this collection
+  let holderCount = 0;
+  state.collectors.forEach(c => { if (c.mintfaceHolds.includes(d.id)) holderCount++; });
+
+  const card = document.getElementById('collection-card');
+  document.getElementById('cc-stripe').style.background = meta.color || 'var(--survey)';
+  document.getElementById('cc-eyebrow').textContent = col.year + ' · ' + (col.chain === 'bitcoin' ? 'Bitcoin' : 'Ethereum');
+  document.getElementById('cc-eyebrow').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-title').textContent = col.name;
+  document.getElementById('cc-title').style.color = meta.color || 'var(--paper)';
+  document.getElementById('cc-desc').textContent = col.desc || '';
+  document.getElementById('cc-artworks').textContent = col.artworks || '—';
+  document.getElementById('cc-artworks').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-chain').textContent = col.chain === 'bitcoin' ? 'BTC' : 'ETH';
+  document.getElementById('cc-chain').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-medium').textContent = col.medium || '—';
+  document.getElementById('cc-medium').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-collectors').textContent = holderCount;
+  document.getElementById('cc-collectors').style.color = meta.color || 'var(--survey)';
+  const link = document.getElementById('cc-link');
+  link.href = meta.url || '#';
+  link.style.color = meta.color || 'var(--survey)';
+  link.style.borderColor = meta.border || 'var(--survey-dim)';
+
+  // Position near cursor but keep within viewport
+  const margin = 16;
+  const rect = card.getBoundingClientRect();
+  let x = event.clientX + 16;
+  let y = event.clientY - 20;
+  if (x + 300 > window.innerWidth) x = event.clientX - 316;
+  if (y + 320 > window.innerHeight) y = window.innerHeight - 320 - margin;
+  if (y < margin) y = margin;
+  card.style.left = x + 'px';
+  card.style.top = y + 'px';
+  card.classList.add('visible');
+}
+
+function hideCollectionCard() {
+  document.getElementById('collection-card').classList.remove('visible');
+}
+
+function highlightCollector(d) {
+  // Route through selectCollector for full focus mode + elevation update
+  if (state.selectedCollector === d.address) return; // already selected
+  selectCollector(d.address);
+  // Update search bar to show selected name
+  const input = document.getElementById('collector-search');
+  if (input) input.value = d.label || d.address;
+  const countEl = document.getElementById('search-count');
+  if (countEl) { countEl.textContent = d.label || d.address; countEl.style.display = 'block'; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════════
+
+function updateClock() {
+  const now = new Date();
+  const nzTime = new Intl.DateTimeFormat('en-NZ', {
+    timeZone: 'Pacific/Auckland',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).format(now);
+  const el = document.getElementById('hud-time');
+  if (el) el.textContent = `NZT ${nzTime}`;
+}
+
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════════════════════════════════
+// LOADING + INIT
+// ═══════════════════════════════════════════════════════════════
+
+function setLoaderProgress(pct, status) {
+  document.getElementById('loader-bar').style.width = `${pct}%`;
+  document.getElementById('loader-status').textContent = status;
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════════════
+
+let dropdownActiveIndex = -1;
+
+function filterElevation(query) {
+  const q = query.trim().toLowerCase();
+  const rows = document.querySelectorAll('.elevation-row');
+  const clearBtn = document.getElementById('search-clear');
+  const countEl = document.getElementById('search-count');
+  const dropdown = document.getElementById('search-dropdown');
+
+  dropdownActiveIndex = -1;
+
+  if (!q) {
+    clearBtn.style.display = 'none';
+    countEl.style.display = 'none';
+    dropdown.classList.remove('visible');
+    dropdown.innerHTML = '';
+    rows.forEach(row => {
+      row.classList.remove('hidden', 'search-highlight');
+    });
+    d3.selectAll('.collector-node').classed('highlight', false);
+    if (state.connectedWallet) {
+      d3.selectAll('.collector-node').filter(d => d.label === state.connectedWallet).classed('highlight', true);
+    }
+    return;
+  }
+
+  clearBtn.style.display = 'block';
+
+  // Filter elevation rows
+  let matches = [];
+  rows.forEach(row => {
+    const displayName = (row.dataset.ens || '').toLowerCase();
+    const rawAddress = (row.dataset.address || '').toLowerCase();
+    const match = displayName.includes(q) || rawAddress.includes(q);
+    row.classList.toggle('hidden', !match);
+    row.classList.toggle('search-highlight', match);
+    if (match) {
+      matches.push({
+        ens: row.dataset.ens || row.dataset.address,
+        address: row.dataset.address,
+        holds: row.querySelectorAll('.elevation-segment[style*="rgba(122"]').length,
+      });
+    }
+  });
+
+  countEl.textContent = `${matches.length} found`;
+  countEl.style.display = 'block';
+
+  // Build dropdown
+  dropdown.innerHTML = '';
+  if (matches.length === 0) {
+    dropdown.innerHTML = '<div class="dropdown-empty">No collectors found</div>';
+    dropdown.classList.add('visible');
+    return;
+  }
+
+  matches.slice(0, 30).forEach((m, i) => {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    item.dataset.address = m.address;
+
+    // Highlight matched portion in name
+    const displayName = m.ens;
+    const qIdx = displayName.toLowerCase().indexOf(q);
+    let nameHtml = displayName;
+    if (qIdx >= 0) {
+      nameHtml = displayName.slice(0, qIdx)
+        + '<em>' + displayName.slice(qIdx, qIdx + q.length) + '</em>'
+        + displayName.slice(qIdx + q.length);
+    }
+
+    // Get holds from state
+    const collectorData = state.collectors.get(m.address);
+    const holds = collectorData ? collectorData.mintfaceHolds : [];
+
+    const tagsHtml = holds.slice(0, 3).map(h => {
+      const col = MINTFACE_COLLECTIONS.find(c => c.id === h);
+      const meta = COLLECTION_META[h] || {};
+      const shortName = COLLECTION_SHORT[h] || col?.name.split(' ')[0] || h;
+      return col ? `<span class="dropdown-tag" style="color:${meta.color||'var(--survey)'};border-color:${meta.border||'var(--survey-dim)'};background:${meta.bg||'transparent'}">${shortName}</span>` : '';
+    }).join('');
+
+    item.innerHTML = `
+      <div class="dropdown-item-name">${nameHtml}</div>
+      <div class="dropdown-item-tags">${tagsHtml}</div>
+    `;
+
+    item.addEventListener('click', () => selectCollector(m.address));
+    item.addEventListener('mouseenter', () => {
+      dropdownActiveIndex = i;
+      updateDropdownActive();
+    });
+    dropdown.appendChild(item);
+  });
+
+  dropdown.classList.add('visible');
+
+  // Highlight matching terrain nodes
+  d3.selectAll('.collector-node').each(function(d) {
+    const labelMatch = d.label && d.label.toLowerCase().includes(q);
+    const addrMatch = d.address && d.address.toLowerCase().includes(q);
+    d3.select(this).classed('highlight', labelMatch || addrMatch);
+  });
+}
+
+function updateDropdownActive() {
+  const items = document.querySelectorAll('.dropdown-item');
+  items.forEach((item, i) => {
+    item.classList.toggle('active', i === dropdownActiveIndex);
+  });
+}
+
+function searchKeyNav(event) {
+  const dropdown = document.getElementById('search-dropdown');
+  const items = document.querySelectorAll('.dropdown-item');
+  if (!dropdown.classList.contains('visible') || items.length === 0) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    dropdownActiveIndex = Math.min(dropdownActiveIndex + 1, items.length - 1);
+    updateDropdownActive();
+    items[dropdownActiveIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    dropdownActiveIndex = Math.max(dropdownActiveIndex - 1, 0);
+    updateDropdownActive();
+    items[dropdownActiveIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const activeItem = items[dropdownActiveIndex];
+    if (activeItem) selectCollector(activeItem.dataset.address);
+  } else if (event.key === 'Escape') {
+    document.getElementById('search-dropdown').classList.remove('visible');
+  }
+}
+
+function selectCollector(address) {
+  const dropdown = document.getElementById('search-dropdown');
+  const input = document.getElementById('collector-search');
+  const data = state.collectors.get(address);
+  if (!data) return;
+
+  const displayName = data.ens || address;
+  input.value = displayName;
+  dropdown.classList.remove('visible');
+
+  // Get this collector's held collection IDs
+  const heldCollections = new Set(data.mintfaceHolds);
+  const nodeId = `collector-${address}`;
+
+  // Dim all nodes and links first
+  d3.selectAll('.collector-node').style('opacity', 0.08);
+  d3.selectAll('.collection-node').style('opacity', 0.08);
+  d3.selectAll('.links line').style('opacity', 0);
+
+  // Show only this collector's node at full opacity
+  d3.selectAll('.collector-node').each(function(d) {
+    if (d.address === address || d.label === displayName) {
+      d3.select(this).style('opacity', 1);
+    }
+  });
+
+  // Show only collection nodes this collector holds
+  d3.selectAll('.collection-node').each(function(d) {
+    if (heldCollections.has(d.id)) {
+      d3.select(this).style('opacity', 1);
+    }
+  });
+
+  // Show only links connected to this collector
+  d3.selectAll('.links line').each(function(d) {
+    const srcId = d.source?.id || d.source;
+    const tgtId = d.target?.id || d.target;
+    if (srcId === nodeId || tgtId === nodeId) {
+      d3.select(this).style('opacity', 1).style('stroke-width', 2).style('stroke', 'rgba(255,255,255,0.3)');
+    }
+  });
+
+  // Clear prior highlights + ripples
+  d3.selectAll('.collector-node').classed('highlight', false).select('circle')
+    .style('stroke', null).style('stroke-width', null).style('filter', null);
+  d3.selectAll('.node-ripple').remove();
+
+  // Pulse + ripple on selected node
+  d3.selectAll('.collector-node').each(function(d) {
+    if (d.address === address || d.label === displayName) {
+      const g = d3.select(this);
+      g.classed('highlight', true);
+      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0);
+      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
+        .style('animation-delay', '0.6s');
+      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
+        .style('animation-delay', '1.2s');
+    }
+  });
+
+  // Update count label
+  document.getElementById('search-count').textContent = displayName;
+  document.getElementById('search-count').style.display = 'block';
+  document.getElementById('search-clear').style.display = 'block';
+  state.selectedCollector = address;
+
+  // Update elevation — highlight row, dim others
+  document.querySelectorAll('.elevation-row').forEach(row => {
+    const isMatch = row.dataset.address === address;
+    row.classList.toggle('hidden', !isMatch);
+    row.classList.toggle('search-highlight', isMatch);
+    row.style.opacity = '1';
+  });
+
+  // Populate selected collector card above terrain
+  const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
+  document.getElementById('sc-name').textContent = displayName;
+  document.getElementById('sc-pct').textContent = pct + '%';
+  document.getElementById('sc-pct').className = `elevation-pct${pct === 100 ? ' complete' : ''}`;
+
+  // Bar fill
+  const scBar = document.getElementById('sc-bar');
+  scBar.style.width = pct + '%';
+
+  // Segments
+  const scSegs = document.getElementById('sc-segs');
+  scSegs.innerHTML = '';
+  MINTFACE_COLLECTIONS.forEach(col => {
+    const seg = document.createElement('div');
+    seg.className = 'elevation-segment';
+    seg.style.width = `${100 / colCount}%`;
+    seg.style.background = data.mintfaceHolds.includes(col.id) ? 'rgba(122,232,160,0.15)' : 'transparent';
+    scSegs.appendChild(seg);
+  });
+
+  // Collection tags
+  const scTags = document.getElementById('sc-tags');
+  scTags.innerHTML = '';
+  data.mintfaceHolds.forEach(colId => {
+    const meta = COLLECTION_META[colId] || {};
+    const tag = document.createElement('div');
+    tag.className = 'tooltip-tag';
+    tag.textContent = COLLECTION_SHORT[colId] || colId;
+    tag.style.color = meta.color || 'var(--survey)';
+    tag.style.borderColor = meta.border || 'var(--survey-dim)';
+    tag.style.background = meta.bg || 'transparent';
+    scTags.appendChild(tag);
+  });
+
+  // Show card
+  document.getElementById('selected-card').classList.add('visible');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.terrain-search-wrap')) {
+    document.getElementById('search-dropdown')?.classList.remove('visible');
+  }
+});
+
+function deselect() {
+  // Restore full terrain
+  d3.selectAll('.collector-node').style('opacity', 1).classed('highlight', false)
+    .select('circle').style('stroke', null).style('stroke-width', null).style('filter', null);
+  d3.selectAll('.collection-node').style('opacity', 1);
+  d3.selectAll('.links line').style('opacity', 1).style('stroke-width', null).style('stroke', null);
+  d3.selectAll('.node-ripple').remove();
+  state.selectedCollector = null;
+  // Clear search bar
+  const input = document.getElementById('collector-search');
+  if (input) input.value = '';
+  const countEl = document.getElementById('search-count');
+  if (countEl) countEl.style.display = 'none';
+  const clearBtn = document.getElementById('search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  const dropdown = document.getElementById('search-dropdown');
+  if (dropdown) dropdown.classList.remove('visible');
+  // Restore all elevation rows
+  document.querySelectorAll('.elevation-row').forEach(r => {
+    r.classList.remove('hidden', 'search-highlight');
+    r.style.opacity = '1';
+  });
+  // Hide selected card
+  document.getElementById('selected-card').classList.remove('visible');
+}
+
+function clearSearch() {
+  deselect();
+  document.getElementById('collector-search')?.focus();
+}
+
+async function loadSnapshot() {
+  try {
+    const res = await fetch('/snapshot.json');
+    if (!res.ok) throw new Error('no snapshot');
+    const data = await res.json();
+    const collectors = new Map();
+    for (const c of data.collectors) {
+      collectors.set(c.address, {
+        ens: c.address,  // raw addr — ENS resolved lazily in background
+        address: c.address,
+        mintfaceHolds: c.mintfaceHolds,
+        affinityHolds: c.affinityHolds || { artblocks: 0, photography: 0, human: 0 },
+      });
+    }
+    return collectors;
+  } catch {
+    return null;
+  }
+}
+
+async function init() {
+  setLoaderProgress(10, 'Loading collector data...');
+
+  let collectors = await loadSnapshot();
+
+  if (collectors && collectors.size > 0) {
+    setLoaderProgress(40, `${collectors.size} collectors surveyed...`);
+    state.collectors = collectors;
+  } else {
+    setLoaderProgress(40, 'Generating terrain...');
+    collectors = generateDemoData();
+    state.collectors = collectors;
+  }
+
+  setLoaderProgress(60, 'Plotting survey points...');
+  renderTerrain(state.collectors);
+
+  setLoaderProgress(80, 'Computing elevation...');
+  renderElevation(state.collectors);
+
+  setLoaderProgress(100, 'Terrain ready');
+
+  setTimeout(() => {
+    document.getElementById('loader').classList.add('hidden');
+  }, 600);
+
+  // Background: resolve ENS names + enrich with affinity via OpenSea
+  enrichLiveData();
+}
+
+async function enrichLiveData() {
+  // Phase 1: resolve ENS for all addresses (batched, no rush)
+  const entries = [...state.collectors.entries()];
+  let anyUpdated = false;
+
+  let batchCount = 0;
+  for (const [address, data] of entries.slice(0, 120)) {
+    try {
+      const ens = await resolveENS(address);
+      if (ens !== address) {
+        data.ens = ens;
+        anyUpdated = true;
+        // Update the matching elevation row in place without full re-render
+        const row = document.querySelector(`.elevation-row[data-address="${address}"]`);
+        if (row) {
+          row.dataset.ens = ens;
+          const nameEl = row.querySelector('.elevation-collector');
+          if (nameEl) nameEl.textContent = ens;
+        }
+        // Update terrain node label
+        d3.selectAll('.collector-node').each(function(d) {
+          if (d.address === address) { d.label = ens; }
+        });
+        d3.selectAll('.collector-node text').filter(function(d) {
+          return d && d.address === address;
+        }).text(d => d.label.length > 12 ? d.label.slice(0,10)+'…' : d.label);
+      }
+    } catch {}
+    batchCount++;
+    await new Promise(r => setTimeout(r, 60));
+  }
+
+  // Phase 2: affinity enrichment via OpenSea (patrimora + two-burdens holders only)
+  for (const [address, data] of entries) {
+    let changed = false;
+
+    if (data.mintfaceHolds.includes('patrimora') && data.affinityHolds.artblocks === 0) {
+      try {
+        const res = await checkAffinityContracts(address, [
+          { name: 'Art Blocks Factory', contract: AB_FACTORY },
+          { name: 'Art Blocks V3', contract: AB_V3 },
+        ]);
+        if (res.count > 0) { data.affinityHolds.artblocks = res.count; changed = true; }
+      } catch {}
+    }
+
+    if (data.mintfaceHolds.includes('two-burdens') && data.affinityHolds.human === 0) {
+      try {
+        const res = await checkAffinityContracts(address, [
+          ...APOCALYPSE_CONTRACTS, ...UNDERSCORE_CONTRACTS, ...HAFFKTA_CONTRACTS
+        ]);
+        if (res.count > 0) { data.affinityHolds.human = res.count; changed = true; }
+      } catch {}
+    }
+
+    if (data.mintfaceHolds.includes('geodetic-moments') && data.affinityHolds.photography === 0) {
+      try {
+        // Check a sample of photography contracts via collection slug
+        const photoSample = PHOTO_ARTISTS.slice(0, 5).map(slug => ({ name: slug, contract: slug }));
+        const res = await checkAffinityContracts(address, photoSample);
+        if (res.count > 0) { data.affinityHolds.photography = res.count; changed = true; }
+      } catch {}
+    }
+
+    // affinity rendering removed
+
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>
