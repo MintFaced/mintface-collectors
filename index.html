@@ -392,12 +392,38 @@
     gap: 2px;
   }
 
+  .elevation-missing {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0 14px;
+  }
+
+  .elevation-missing-tag {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    padding: 3px 8px;
+    border: 1px solid;
+    text-decoration: none;
+    text-transform: uppercase;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+  }
+
+  .elevation-missing-tag:hover { opacity: 1; }
+
+  .elevation-missing-tag::before {
+    content: '+ ';
+    opacity: 0.5;
+  }
+
   .elevation-row {
     display: grid;
     grid-template-columns: 200px 1fr 80px;
     align-items: center;
     gap: 20px;
-    padding: 16px 0;
+    padding: 16px 0 0;
     border-bottom: 1px solid var(--grid);
     cursor: pointer;
     transition: background 0.15s;
@@ -836,8 +862,7 @@
     font-size: 7px;
     letter-spacing: 0.1em;
     padding: 2px 5px;
-    border: 1px solid var(--survey-dim);
-    color: var(--survey-dim);
+    border: 1px solid;
     text-transform: uppercase;
     white-space: nowrap;
   }
@@ -1054,6 +1079,18 @@ const MINTFACE_COLLECTIONS = [
   { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum' },
   { id: 'geodetic-home',      name: 'Geodetic Home',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum' },
 ];
+
+// Per-collection color + OpenSea URL
+const COLLECTION_META = {
+  'artificial-flowers': { color: '#e87a9e', bg: 'rgba(232,122,158,0.15)', border: 'rgba(232,122,158,0.4)', url: 'https://opensea.io/collection/artificial-flowers-by-mintface' },
+  'patrimora':          { color: '#7a9ee8', bg: 'rgba(122,158,232,0.15)', border: 'rgba(122,158,232,0.4)', url: 'https://opensea.io/collection/patrimora' },
+  'two-burdens':        { color: '#e8c97a', bg: 'rgba(232,201,122,0.15)', border: 'rgba(232,201,122,0.4)', url: 'https://opensea.io/collection/two-burdens-by-mintface' },
+  'recursive-mind':     { color: '#c47ae8', bg: 'rgba(196,122,232,0.15)', border: 'rgba(196,122,232,0.4)', url: 'https://gamma.io/mintface' },
+  'geodetica':          { color: '#7ae8c4', bg: 'rgba(122,232,196,0.15)', border: 'rgba(122,232,196,0.4)', url: 'https://opensea.io/collection/geodetica' },
+  'roads-rivers':       { color: '#e8a87a', bg: 'rgba(232,168,122,0.15)', border: 'rgba(232,168,122,0.4)', url: 'https://opensea.io/collection/roads-and-rivers-by-mintface' },
+  'geodetic-moments':   { color: '#a8e87a', bg: 'rgba(168,232,122,0.15)', border: 'rgba(168,232,122,0.4)', url: 'https://opensea.io/collection/geodetic-moments' },
+  'geodetic-home':      { color: '#7ac4e8', bg: 'rgba(122,196,232,0.15)', border: 'rgba(122,196,232,0.4)', url: 'https://opensea.io/collection/geodetic-home-by-mintface' },
+};
 
 // Art Blocks Curated — factory contract + key project IDs
 // These project IDs map to token ranges: projectId * 1,000,000 to (projectId+1)*1,000,000 - 1
@@ -1577,6 +1614,30 @@ function renderElevation(collectors, connectedWallet = null) {
     pctDiv.textContent = `${pct}%`;
     row.appendChild(pctDiv);
 
+    // Missing collections — tags linking to OpenSea
+    const ethCollections = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract);
+    const missing = ethCollections.filter(col => !data.mintfaceHolds.includes(col.id));
+    if (missing.length > 0) {
+      const missingDiv = document.createElement('div');
+      missingDiv.className = 'elevation-missing';
+      missing.forEach(col => {
+        const meta = COLLECTION_META[col.id] || {};
+        const a = document.createElement('a');
+        a.className = 'elevation-missing-tag';
+        a.href = meta.url || 'https://opensea.io/mintface';
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = col.name;
+        a.style.color = meta.color || 'var(--ink-faint)';
+        a.style.borderColor = meta.border || 'var(--grid-bright)';
+        a.style.background = meta.bg || 'transparent';
+        missingDiv.appendChild(a);
+      });
+      // span all 3 columns
+      missingDiv.style.gridColumn = '1 / -1';
+      row.appendChild(missingDiv);
+    }
+
     grid.appendChild(row);
 
     // Animate bar in
@@ -1857,7 +1918,8 @@ function filterElevation(query) {
 
     const tagsHtml = holds.slice(0, 3).map(h => {
       const col = MINTFACE_COLLECTIONS.find(c => c.id === h);
-      return col ? `<span class="dropdown-tag">${col.name.split(' ')[0]}</span>` : '';
+      const meta = COLLECTION_META[h] || {};
+      return col ? `<span class="dropdown-tag" style="color:${meta.color||'var(--survey)'};border-color:${meta.border||'var(--survey-dim)'};background:${meta.bg||'transparent'}">${col.name.split(' ')[0]}</span>` : '';
     }).join('');
 
     item.innerHTML = `
@@ -1924,45 +1986,22 @@ function selectCollector(address) {
   input.value = displayName;
   dropdown.classList.remove('visible');
 
-  // Clear all highlights, set just this one
-  d3.selectAll('.collector-node').classed('highlight', false);
+  // Clear all prior selection highlights
+  d3.selectAll('.collector-node').classed('highlight', false).select('circle')
+    .style('stroke', null).style('stroke-width', null).style('filter', null);
 
-  // Find the node, highlight it and pan terrain to centre on it
-  let targetNode = null;
+  // Highlight just this node with a distinct selected color
   d3.selectAll('.collector-node').each(function(d) {
     if (d.address === address || d.label === displayName) {
-      d3.select(this).classed('highlight', true);
-      targetNode = d;
+      d3.select(this).classed('highlight', true)
+        .select('circle')
+        .style('stroke', '#ffffff')
+        .style('stroke-width', '3')
+        .style('filter', 'drop-shadow(0 0 10px rgba(255,255,255,0.8))');
     }
   });
 
-  // Pan the terrain to centre on the selected node
-  if (targetNode && targetNode.x != null && state.zoom) {
-    const svg = d3.select('#terrain-svg');
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    const scale = 1.8;
-    const tx = W / 2 - scale * targetNode.x;
-    const ty = H / 2 - scale * targetNode.y;
-
-    svg.transition()
-      .duration(700)
-      .call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-  }
-
-  // Scroll to elevation row and flash it
-  const row = document.querySelector(`.elevation-row[data-address="${address}"]`);
-  if (row) {
-    row.classList.remove('hidden');
-    setTimeout(() => {
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      row.style.transition = 'background 0.3s';
-      row.style.background = 'rgba(196,168,130,0.15)';
-      setTimeout(() => { row.style.background = ''; }, 1200);
-    }, 400);
-  }
-
-  // Update count
+  // Update count label to show selected name
   document.getElementById('search-count').textContent = displayName;
 }
 
