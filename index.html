@@ -1433,10 +1433,8 @@ function renderTerrain(collectors) {
   });
 
   // HUD stats
-  const affinityLinks = links.filter(l => l.type.startsWith('affinity'));
   document.getElementById('hud-collectors').textContent = `${collectorsData.length} collectors`;
   document.getElementById('hud-collections').textContent = `${colNodes.length} collections`;
-  document.getElementById('hud-affinity-count').textContent = `${affinityLinks.length} affinity links`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2137,9 +2135,7 @@ async function enrichLiveData() {
       } catch {}
     }
 
-    if (changed) {
-      renderAffinity(state.collectors);
-    }
+    // affinity rendering removed
 
     await new Promise(r => setTimeout(r, 200));
   }
