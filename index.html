@@ -709,9 +709,11 @@
   }
 
   /* ── SEARCH BAR ── */
-  .search-wrap {
-    padding: 0 80px 40px;
+  .terrain-search-wrap {
     position: relative;
+    padding: 80px 80px 0;
+    background: var(--void);
+    z-index: 10;
   }
 
   .search-input {
@@ -723,7 +725,7 @@
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.1em;
-    padding: 14px 48px 14px 20px;
+    padding: 14px 120px 14px 20px;
     outline: none;
     transition: border-color 0.2s, background 0.2s;
   }
@@ -735,31 +737,32 @@
 
   .search-input:focus {
     border-color: var(--survey);
-    background: rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.04);
   }
 
   .search-clear {
     position: absolute;
-    right: 92px;
+    right: 88px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(calc(-50% + 40px));
     background: none;
     border: none;
     color: var(--ink-faint);
     font-family: var(--mono);
-    font-size: 14px;
+    font-size: 16px;
     cursor: pointer;
-    padding: 4px 8px;
+    padding: 4px 10px;
     display: none;
+    line-height: 1;
   }
 
   .search-clear:hover { color: var(--survey); }
 
   .search-count {
     position: absolute;
-    right: 96px;
+    right: 88px;
     top: 50%;
-    transform: translateY(-50%);
+    transform: translateY(calc(-50% + 40px));
     font-size: 8px;
     color: var(--ink-faint);
     letter-spacing: 0.15em;
@@ -770,9 +773,9 @@
   .elevation-row.search-highlight { background: rgba(196,168,130,0.06); }
 
   @media (max-width: 768px) {
-    .search-wrap { padding: 0 24px 32px; }
-    .search-clear { right: 36px; }
-    .search-count { right: 40px; }
+    .terrain-search-wrap { padding: 70px 24px 0; }
+    .search-clear { right: 32px; }
+    .search-count { right: 32px; }
   }
 </style>
 </head>
@@ -810,6 +813,21 @@
     <button id="wallet-btn" onclick="connectWallet()">Connect Wallet</button>
   </div>
 </nav>
+
+<!-- ── SEARCH BAR ── -->
+<div class="terrain-search-wrap">
+  <input
+    class="search-input terrain-search-input"
+    id="collector-search"
+    type="text"
+    placeholder="Search collector — ENS name or wallet address..."
+    oninput="filterElevation(this.value)"
+    autocomplete="off"
+    spellcheck="false"
+  />
+  <span class="search-count" id="search-count"></span>
+  <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
+</div>
 
 <!-- ── TERRAIN ── -->
 <section id="terrain">
@@ -879,20 +897,6 @@
       <span>SUMMIT</span>
     </div>
     <div></div>
-  </div>
-
-  <div class="search-wrap">
-    <input
-      class="search-input"
-      id="collector-search"
-      type="text"
-      placeholder="Search collector — ENS name or wallet address..."
-      oninput="filterElevation(this.value)"
-      autocomplete="off"
-      spellcheck="false"
-    />
-    <span class="search-count" id="search-count"></span>
-    <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
   </div>
 
   <div class="elevation-grid" id="elevation-grid">
@@ -1448,6 +1452,7 @@ function renderElevation(collectors, connectedWallet = null) {
 
     const row = document.createElement('div');
     row.className = `elevation-row${isSelf ? ' is-self' : ''}`;
+    row.dataset.address = data.address || ens;
 
     // Name
     const nameDiv = document.createElement('div');
@@ -1702,8 +1707,10 @@ function filterElevation(query) {
 
   let visible = 0;
   rows.forEach(row => {
-    const name = (row.querySelector('.elevation-collector')?.textContent || '').toLowerCase();
-    const match = !q || name.includes(q);
+    // Search both the displayed ENS name AND the stored raw address
+    const displayName = (row.querySelector('.elevation-collector')?.textContent || '').toLowerCase();
+    const rawAddress = (row.dataset.address || '').toLowerCase();
+    const match = !q || displayName.includes(q) || rawAddress.includes(q);
     row.classList.toggle('hidden', !match);
     row.classList.toggle('search-highlight', match && q.length > 0);
     if (match) visible++;
@@ -1712,19 +1719,21 @@ function filterElevation(query) {
   if (q) {
     countEl.textContent = `${visible} found`;
     countEl.style.display = 'block';
+    clearBtn.style.display = 'block';
   } else {
     countEl.style.display = 'none';
+    clearBtn.style.display = 'none';
   }
 
-  // Also highlight matching node in terrain
+  // Also highlight matching nodes in terrain
   if (q.length >= 3) {
     d3.selectAll('.collector-node').each(function(d) {
-      const match = d.label.toLowerCase().includes(q);
-      d3.select(this).classed('highlight', match);
+      const labelMatch = d.label.toLowerCase().includes(q);
+      const addrMatch = (d.address || '').toLowerCase().includes(q);
+      d3.select(this).classed('highlight', labelMatch || addrMatch);
     });
   } else {
     d3.selectAll('.collector-node').classed('highlight', false);
-    // Re-highlight connected wallet if any
     if (state.connectedWallet) {
       d3.selectAll('.collector-node').filter(d => d.label === state.connectedWallet).classed('highlight', true);
     }
