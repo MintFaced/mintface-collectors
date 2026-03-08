@@ -213,11 +213,31 @@
   .edge-affinity-photo { stroke: var(--node-photography); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
   .edge-affinity-human { stroke: var(--node-human); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
 
-  /* Highlighted (connected wallet) */
+  /* Highlighted / selected collector */
   .collector-node.highlight circle {
-    stroke: var(--node-mintface) !important;
-    stroke-width: 3 !important;
-    filter: drop-shadow(0 0 8px var(--node-mintface));
+    stroke: #ffffff !important;
+    stroke-width: 2.5 !important;
+    animation: node-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes node-pulse {
+    0%   { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); stroke-width: 2.5px; }
+    50%  { filter: drop-shadow(0 0 14px rgba(255,255,255,1)) drop-shadow(0 0 28px rgba(255,255,255,0.4)); stroke-width: 3.5px; }
+    100% { filter: drop-shadow(0 0 4px rgba(255,255,255,0.9)); stroke-width: 2.5px; }
+  }
+
+  /* Ripple ring — added via JS */
+  .node-ripple {
+    fill: none;
+    stroke: rgba(255,255,255,0.5);
+    stroke-width: 1;
+    animation: ripple-out 1.8s ease-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes ripple-out {
+    0%   { r: 0;  opacity: 0.7; }
+    100% { r: 28px; opacity: 0; }
   }
 
   /* ── HUD overlays ── */
@@ -1082,14 +1102,26 @@ const MINTFACE_COLLECTIONS = [
 
 // Per-collection color + OpenSea URL
 const COLLECTION_META = {
-  'artificial-flowers': { color: '#e87a9e', bg: 'rgba(232,122,158,0.15)', border: 'rgba(232,122,158,0.4)', url: 'https://opensea.io/collection/artificial-flowers-by-mintface' },
-  'patrimora':          { color: '#7a9ee8', bg: 'rgba(122,158,232,0.15)', border: 'rgba(122,158,232,0.4)', url: 'https://opensea.io/collection/patrimora' },
-  'two-burdens':        { color: '#e8c97a', bg: 'rgba(232,201,122,0.15)', border: 'rgba(232,201,122,0.4)', url: 'https://opensea.io/collection/two-burdens-by-mintface' },
-  'recursive-mind':     { color: '#c47ae8', bg: 'rgba(196,122,232,0.15)', border: 'rgba(196,122,232,0.4)', url: 'https://gamma.io/mintface' },
+  'artificial-flowers': { color: '#e87a9e', bg: 'rgba(232,122,158,0.15)', border: 'rgba(232,122,158,0.4)', url: 'https://opensea.io/collection/artificial-flower' },
+  'patrimora':          { color: '#7a9ee8', bg: 'rgba(122,158,232,0.15)', border: 'rgba(122,158,232,0.4)', url: 'https://patrimora.com' },
+  'two-burdens':        { color: '#e8c97a', bg: 'rgba(232,201,122,0.15)', border: 'rgba(232,201,122,0.4)', url: 'https://opensea.io/collection/two-burdens' },
+  'recursive-mind':     { color: '#c47ae8', bg: 'rgba(196,122,232,0.15)', border: 'rgba(196,122,232,0.4)', url: 'https://gamma.io/ordinals/collections/recursive-mind/items' },
   'geodetica':          { color: '#7ae8c4', bg: 'rgba(122,232,196,0.15)', border: 'rgba(122,232,196,0.4)', url: 'https://opensea.io/collection/geodetica' },
-  'roads-rivers':       { color: '#e8a87a', bg: 'rgba(232,168,122,0.15)', border: 'rgba(232,168,122,0.4)', url: 'https://opensea.io/collection/roads-and-rivers-by-mintface' },
+  'roads-rivers':       { color: '#e8a87a', bg: 'rgba(232,168,122,0.15)', border: 'rgba(232,168,122,0.4)', url: 'https://opensea.io/collection/roads-and-rivers' },
   'geodetic-moments':   { color: '#a8e87a', bg: 'rgba(168,232,122,0.15)', border: 'rgba(168,232,122,0.4)', url: 'https://opensea.io/collection/geodetic-moments' },
-  'geodetic-home':      { color: '#7ac4e8', bg: 'rgba(122,196,232,0.15)', border: 'rgba(122,196,232,0.4)', url: 'https://opensea.io/collection/geodetic-home-by-mintface' },
+  'geodetic-home':      { color: '#7ac4e8', bg: 'rgba(122,196,232,0.15)', border: 'rgba(122,196,232,0.4)', url: 'https://opensea.io/collection/geodetic' },
+};
+
+// Short display names for tags
+const COLLECTION_SHORT = {
+  'artificial-flowers': 'Artificial Flowers',
+  'patrimora':          'Patrimora',
+  'two-burdens':        'Two Burdens',
+  'recursive-mind':     'Recursive Mind',
+  'geodetica':          'Geodetica',
+  'roads-rivers':       'Roads & Rivers',
+  'geodetic-moments':   'Moments',
+  'geodetic-home':      'Sculpture',
 };
 
 // Art Blocks Curated — factory contract + key project IDs
@@ -1627,7 +1659,7 @@ function renderElevation(collectors, connectedWallet = null) {
         a.href = meta.url || 'https://opensea.io/mintface';
         a.target = '_blank';
         a.rel = 'noopener';
-        a.textContent = col.name;
+        a.textContent = COLLECTION_SHORT[col.id] || col.name;
         a.style.color = meta.color || 'var(--ink-faint)';
         a.style.borderColor = meta.border || 'var(--grid-bright)';
         a.style.background = meta.bg || 'transparent';
@@ -1919,7 +1951,8 @@ function filterElevation(query) {
     const tagsHtml = holds.slice(0, 3).map(h => {
       const col = MINTFACE_COLLECTIONS.find(c => c.id === h);
       const meta = COLLECTION_META[h] || {};
-      return col ? `<span class="dropdown-tag" style="color:${meta.color||'var(--survey)'};border-color:${meta.border||'var(--survey-dim)'};background:${meta.bg||'transparent'}">${col.name.split(' ')[0]}</span>` : '';
+      const shortName = COLLECTION_SHORT[h] || col?.name.split(' ')[0] || h;
+      return col ? `<span class="dropdown-tag" style="color:${meta.color||'var(--survey)'};border-color:${meta.border||'var(--survey-dim)'};background:${meta.bg||'transparent'}">${shortName}</span>` : '';
     }).join('');
 
     item.innerHTML = `
@@ -1986,18 +2019,23 @@ function selectCollector(address) {
   input.value = displayName;
   dropdown.classList.remove('visible');
 
-  // Clear all prior selection highlights
+  // Clear all prior highlights + remove any ripple rings
   d3.selectAll('.collector-node').classed('highlight', false).select('circle')
     .style('stroke', null).style('stroke-width', null).style('filter', null);
+  d3.selectAll('.node-ripple').remove();
 
-  // Highlight just this node with a distinct selected color
+  // Highlight selected node + add pulsing ripple rings
   d3.selectAll('.collector-node').each(function(d) {
     if (d.address === address || d.label === displayName) {
-      d3.select(this).classed('highlight', true)
-        .select('circle')
-        .style('stroke', '#ffffff')
-        .style('stroke-width', '3')
-        .style('filter', 'drop-shadow(0 0 10px rgba(255,255,255,0.8))');
+      const g = d3.select(this);
+      g.classed('highlight', true);
+
+      // Add two offset ripple rings for a signal-emanation effect
+      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0);
+      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
+        .style('animation-delay', '0.6s');
+      g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
+        .style('animation-delay', '1.2s');
     }
   });
 
@@ -2016,6 +2054,9 @@ function clearSearch() {
   const input = document.getElementById('collector-search');
   input.value = '';
   filterElevation('');
+  d3.selectAll('.collector-node').classed('highlight', false).select('circle')
+    .style('stroke', null).style('stroke-width', null).style('filter', null);
+  d3.selectAll('.node-ripple').remove();
   input.focus();
 }
 
