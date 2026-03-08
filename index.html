@@ -1471,10 +1471,14 @@ function showTooltip(event, d) {
   tagsDiv.innerHTML = '';
   d.holds.forEach(colId => {
     const col = MINTFACE_COLLECTIONS.find(c => c.id === colId);
+    const meta = COLLECTION_META[colId] || {};
     if (col) {
       const tag = document.createElement('div');
       tag.className = 'tooltip-tag';
-      tag.textContent = col.name;
+      tag.textContent = COLLECTION_SHORT[colId] || col.name;
+      tag.style.color = meta.color || 'var(--survey)';
+      tag.style.borderColor = meta.border || 'var(--survey-dim)';
+      tag.style.background = meta.bg || 'transparent';
       tagsDiv.appendChild(tag);
     }
   });
