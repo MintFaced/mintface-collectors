@@ -1341,6 +1341,13 @@ function renderTerrain(collectors) {
     .on('zoom', (event) => mainG.attr('transform', event.transform));
   svg.call(state.zoom);
 
+  // Click on empty terrain → deselect
+  svg.on('click', (event) => {
+    if (event.target === svg.node() || event.target.closest('.grid') || event.target.tagName === 'line') {
+      deselect();
+    }
+  });
+
   // Links
   const linkG = mainG.append('g').attr('class', 'links');
   const linkSel = linkG.selectAll('line')
@@ -1359,8 +1366,8 @@ function renderTerrain(collectors) {
 
   colSel.append('circle')
     .attr('r', d => d.r)
-    .attr('fill', 'none')
-    .attr('stroke', 'var(--survey)')
+    .attr('fill', d => (COLLECTION_META[d.id] || {}).bg || 'rgba(196,168,130,0.15)')
+    .attr('stroke', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
     .attr('stroke-width', 2);
 
   // Inner diamond
@@ -1369,14 +1376,15 @@ function renderTerrain(collectors) {
       const r = d.r * 0.5;
       return `0,${-r} ${r},0 0,${r} ${-r},0`;
     })
-    .attr('fill', 'var(--survey)')
-    .attr('opacity', 0.6);
+    .attr('fill', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
+    .attr('opacity', 0.8);
 
   colSel.append('text')
     .attr('class', 'cluster-label-main')
     .attr('y', d => -(d.r + 8))
     .attr('text-anchor', 'middle')
-    .text(d => d.label);
+    .attr('fill', d => (COLLECTION_META[d.id] || {}).color || 'var(--survey)')
+    .text(d => COLLECTION_SHORT[d.id] || d.label);
 
   colSel.append('text')
     .attr('class', 'cluster-label')
@@ -1396,29 +1404,28 @@ function renderTerrain(collectors) {
     .on('mouseover', showTooltip)
     .on('mousemove', moveTooltip)
     .on('mouseout', hideTooltip)
-    .on('click', (event, d) => highlightCollector(d));
+    .on('click', (event, d) => { event.stopPropagation(); highlightCollector(d); });
 
   collectorSel.append('circle')
     .attr('r', d => d.r)
-    .attr('fill', d => {
-      if (d.affinity.artblocks > 0 && d.affinity.photography > 0) return 'var(--survey)';
-      if (d.affinity.artblocks > 0) return 'var(--node-artblocks)';
-      if (d.affinity.photography > 0) return 'var(--node-photography)';
-      if (d.affinity.human > 0) return 'var(--node-human)';
-      return 'var(--node-mintface)';
-    })
-    .attr('fill-opacity', 0.7)
-    .attr('stroke', d => {
-      if (d.affinity.artblocks > 0) return 'var(--node-artblocks)';
-      if (d.affinity.photography > 0) return 'var(--node-photography)';
-      if (d.affinity.human > 0) return 'var(--node-human)';
-      return 'rgba(232,201,122,0.4)';
-    });
+    .attr('fill', 'var(--node-mintface)')
+    .attr('fill-opacity', 0.6)
+    .attr('stroke', 'rgba(232,201,122,0.35)')
+    .attr('stroke-width', 1);
 
   collectorSel.append('text')
     .attr('y', d => d.r + 12)
     .attr('text-anchor', 'middle')
-    .text(d => d.label.length > 12 ? d.label.slice(0,10)+'…' : d.label);
+    .text(d => {
+      const label = d.label || '';
+      if (label.length <= 14) return label;
+      // ENS names: truncate end
+      if (label.includes('.eth') || !label.startsWith('0x')) {
+        return label.slice(0, 12) + '…';
+      }
+      // Wallet address: truncate middle — show 0x1234…5678
+      return label.slice(0, 6) + '…' + label.slice(-4);
+    });
 
   // Tick
   simulation.on('tick', () => {
@@ -1762,9 +1769,14 @@ function scrollToCollector(ens) {
 }
 
 function highlightCollector(d) {
-  // On click, highlight in terrain and scroll to elevation row
-  d3.selectAll('.collector-node').classed('highlight', false);
-  d3.selectAll('.collector-node').filter(n => n.id === d.id).classed('highlight', true);
+  // Route through selectCollector for full focus mode + elevation update
+  if (state.selectedCollector === d.address) return; // already selected
+  selectCollector(d.address);
+  // Update search bar to show selected name
+  const input = document.getElementById('collector-search');
+  if (input) input.value = d.label || d.address;
+  const countEl = document.getElementById('search-count');
+  if (countEl) { countEl.textContent = d.label || d.address; countEl.style.display = 'block'; }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1997,7 +2009,17 @@ function selectCollector(address) {
 
   // Update count label
   document.getElementById('search-count').textContent = displayName;
+  document.getElementById('search-count').style.display = 'block';
+  document.getElementById('search-clear').style.display = 'block';
   state.selectedCollector = address;
+
+  // Update elevation — show this row prominently, dim others
+  document.querySelectorAll('.elevation-row').forEach(row => {
+    const isMatch = row.dataset.address === address;
+    row.classList.toggle('hidden', false); // keep all visible
+    row.classList.toggle('search-highlight', isMatch);
+    row.style.opacity = isMatch ? '1' : '0.3';
+  });
 }
 
 // Close dropdown when clicking outside
@@ -2007,18 +2029,33 @@ document.addEventListener('click', (e) => {
   }
 });
 
-function clearSearch() {
-  const input = document.getElementById('collector-search');
-  input.value = '';
-  filterElevation('');
-  // Restore all terrain visibility
+function deselect() {
+  // Restore full terrain
   d3.selectAll('.collector-node').style('opacity', 1).classed('highlight', false)
     .select('circle').style('stroke', null).style('stroke-width', null).style('filter', null);
   d3.selectAll('.collection-node').style('opacity', 1);
   d3.selectAll('.links line').style('opacity', 1).style('stroke-width', null).style('stroke', null);
   d3.selectAll('.node-ripple').remove();
   state.selectedCollector = null;
-  input.focus();
+  // Clear search bar
+  const input = document.getElementById('collector-search');
+  if (input) input.value = '';
+  const countEl = document.getElementById('search-count');
+  if (countEl) countEl.style.display = 'none';
+  const clearBtn = document.getElementById('search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  const dropdown = document.getElementById('search-dropdown');
+  if (dropdown) dropdown.classList.remove('visible');
+  // Restore all elevation rows
+  document.querySelectorAll('.elevation-row').forEach(r => {
+    r.classList.remove('hidden', 'search-highlight');
+    r.style.opacity = '1';
+  });
+}
+
+function clearSearch() {
+  deselect();
+  document.getElementById('collector-search')?.focus();
 }
 
 async function loadSnapshot() {
