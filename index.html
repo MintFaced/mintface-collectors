@@ -1119,7 +1119,9 @@
 
 <!-- ── TERRAIN ── -->
 <!-- ── COLLECTION NODE CARD ── -->
-<div class="collection-card" id="collection-card">
+<div class="collection-card" id="collection-card"
+  onmouseenter="clearTimeout(state && state.cardHideTimer)"
+  onmouseleave="state.cardHideTimer = setTimeout(hideCollectionCard, 150)">
   <div class="collection-card-stripe" id="cc-stripe"></div>
   <div class="collection-card-body">
     <div class="collection-card-eyebrow" id="cc-eyebrow"></div>
@@ -1248,7 +1250,7 @@ const MINTFACE_COLLECTIONS = [
   { id: 'geodetica',          name: 'Geodetica',          year: 2022, contract: '0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933', chain: 'ethereum', artworks: 100, medium: 'Pure AI',          desc: '100 AI-generated works mapping imaginary geological survey territories — the first MintFace AI collection.' },
   { id: 'roads-rivers',       name: 'Roads & Rivers',     year: 2022, contract: '0x18bd004e13258f569cedfbb537ba329e4730ee67', chain: 'ethereum', artworks: 40,  medium: 'Photography',     desc: '40 photographs tracing the infrastructural veins of the landscape — roads and waterways as abstract systems.' },
   { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum', artworks: 100, medium: 'Photography',     desc: '100 photographic moments captured across New Zealand terrain — the founding MintFace collection.' },
-  { id: 'geodetic-home',      name: 'Geodetic Home',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum', artworks: 5,   medium: 'Sculpture',       desc: 'Five on-chain sculptures — geodetic survey markers reimagined as collectible 3D objects on Ethereum.' },
+  { id: 'geodetic-home',      name: 'Geodetic Editions',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum', artworks: 5,   medium: 'Editions',       desc: 'Five on-chain edition works — geodetic survey markers tokenized as ERC-1155 collectibles on Ethereum.' },
 ];
 
 // Per-collection color + OpenSea URL
@@ -1272,7 +1274,7 @@ const COLLECTION_SHORT = {
   'geodetica':          'Geodetica',
   'roads-rivers':       'Roads & Rivers',
   'geodetic-moments':   'Moments',
-  'geodetic-home':      'Sculpture',
+  'geodetic-home':      'Editions',
 };
 
 // Art Blocks Curated — factory contract + key project IDs
@@ -1609,8 +1611,8 @@ function renderTerrain(collectors) {
   colSel
     .style('cursor', 'pointer')
     .on('click', (event, d) => { event.stopPropagation(); showCollectionCard(event, d); })
-    .on('mouseenter', (event, d) => showCollectionCard(event, d))
-    .on('mouseleave', () => hideCollectionCard());
+    .on('mouseenter', (event, d) => { clearTimeout(state.cardHideTimer); showCollectionCard(event, d); })
+    .on('mouseleave', () => { state.cardHideTimer = setTimeout(hideCollectionCard, 300); });
 
   // Collector nodes
   const collectorG = mainG.append('g').attr('class', 'collectors');
