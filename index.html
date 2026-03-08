@@ -931,7 +931,7 @@
   <ul class="nav-links">
     <li><a href="#terrain">Terrain</a></li>
     <li><a href="#elevation">Elevation</a></li>
-    <li><a href="#affinity">Affinity</a></li>
+
   </ul>
   <div class="nav-right">
     <button id="wallet-btn" onclick="connectWallet()">Connect Wallet</button>
@@ -962,7 +962,7 @@
   <div class="hud hud-tl">
     <span class="hud-coord" id="hud-collectors">— collectors</span>
     <span class="hud-coord" id="hud-collections">— collections</span>
-    <span class="hud-coord" id="hud-affinity-count">— affinity links</span>
+
   </div>
 
   <div class="hud hud-tr">
@@ -985,18 +985,7 @@
       <div class="legend-dot" style="width:12px;height:12px;background:none;border:2px solid var(--survey)"></div>
       Collection anchor
     </div>
-    <div class="legend-item">
-      <div class="legend-line" style="border-color:var(--node-artblocks)"></div>
-      Art Blocks affinity
-    </div>
-    <div class="legend-item">
-      <div class="legend-line" style="border-color:var(--node-photography)"></div>
-      Photography affinity
-    </div>
-    <div class="legend-item">
-      <div class="legend-line" style="border-color:var(--node-human)"></div>
-      Human condition affinity
-    </div>
+
   </div>
 </section>
 
@@ -1030,59 +1019,7 @@
   </div>
 </section>
 
-<!-- ── AFFINITY ── -->
-<section id="affinity">
-  <div class="section-header">
-    <div>
-      <div class="section-eyebrow">Cross-Collection Intelligence</div>
-      <h2 class="section-title">Affinity<br><em>Index</em></h2>
-    </div>
-    <div class="section-meta">
-      <div>Collectors of MintFace also hold</div>
-      <div>sight-lines between terrains</div>
-    </div>
-  </div>
 
-  <div class="affinity-panels">
-
-    <div class="affinity-panel artblocks">
-      <div class="affinity-panel-eyebrow">Generative Art</div>
-      <div class="affinity-panel-title">Art Blocks<br>Curated</div>
-      <div class="affinity-panel-sub">Patrimora collectors × generative art</div>
-      <div class="affinity-stat"><span class="affinity-stat-label">OVERLAP</span><span class="affinity-stat-value" id="ab-overlap">—</span></div>
-      <div class="affinity-stat"><span class="affinity-stat-label">PROJECTS HELD</span><span class="affinity-stat-value" id="ab-projects">—</span></div>
-      <div class="affinity-stat"><span class="affinity-stat-label">DEEPEST HOLD</span><span class="affinity-stat-value" id="ab-depth">—</span></div>
-      <div class="affinity-collectors" id="ab-collectors">
-        <div style="color:var(--ink-faint);font-size:9px;padding:16px 0">Loading...</div>
-      </div>
-    </div>
-
-    <div class="affinity-panel photography">
-      <div class="affinity-panel-eyebrow">1/1 Photography</div>
-      <div class="affinity-panel-title">Photography<br>Icons</div>
-      <div class="affinity-panel-sub">Geodetic Moments collectors × photography</div>
-      <div class="affinity-stat"><span class="affinity-stat-label">OVERLAP</span><span class="affinity-stat-value" id="ph-overlap">—</span></div>
-      <div class="affinity-stat"><span class="affinity-stat-label">ARTISTS HELD</span><span class="affinity-stat-value" id="ph-artists">—</span></div>
-      <div class="affinity-stat"><span class="affinity-stat-label">DEEPEST HOLD</span><span class="affinity-stat-value" id="ph-depth">—</span></div>
-      <div class="affinity-collectors" id="ph-collectors">
-        <div style="color:var(--ink-faint);font-size:9px;padding:16px 0">Loading...</div>
-      </div>
-    </div>
-
-    <div class="affinity-panel human">
-      <div class="affinity-panel-eyebrow">Human Condition</div>
-      <div class="affinity-panel-title">Apocalypse ·<br>Underscore · Haffkta</div>
-      <div class="affinity-panel-sub">Two Burdens collectors × the human condition</div>
-      <div class="affinity-stat"><span class="affinity-stat-label">OVERLAP</span><span class="affinity-stat-value" id="hc-overlap">—</span></div>
-      <div class="affinity-stat"><span class="affinity-stat-label">SERIES HELD</span><span class="affinity-stat-value" id="hc-series">—</span></div>
-      <div class="affinity-stat"><span class="affinity-stat-label">DEEPEST HOLD</span><span class="affinity-stat-value" id="hc-depth">—</span></div>
-      <div class="affinity-collectors" id="hc-collectors">
-        <div style="color:var(--ink-faint);font-size:9px;padding:16px 0">Loading...</div>
-      </div>
-    </div>
-
-  </div>
-</section>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -1343,16 +1280,7 @@ function buildGraph(collectors) {
       });
     });
 
-    // Affinity links
-    if (data.affinityHolds.artblocks > 0) {
-      links.push({ source: nodeId, target: 'patrimora', type: 'affinity-artblocks' });
-    }
-    if (data.affinityHolds.photography > 0) {
-      links.push({ source: nodeId, target: 'geodetic-moments', type: 'affinity-photo' });
-    }
-    if (data.affinityHolds.human > 0) {
-      links.push({ source: nodeId, target: 'two-burdens', type: 'affinity-human' });
-    }
+    // Affinity links removed — MintFace collections only
   });
 
   return { nodes, links };
@@ -2019,18 +1947,48 @@ function selectCollector(address) {
   input.value = displayName;
   dropdown.classList.remove('visible');
 
-  // Clear all prior highlights + remove any ripple rings
+  // Get this collector's held collection IDs
+  const heldCollections = new Set(data.mintfaceHolds);
+  const nodeId = `collector-${address}`;
+
+  // Dim all nodes and links first
+  d3.selectAll('.collector-node').style('opacity', 0.08);
+  d3.selectAll('.collection-node').style('opacity', 0.08);
+  d3.selectAll('.links line').style('opacity', 0);
+
+  // Show only this collector's node at full opacity
+  d3.selectAll('.collector-node').each(function(d) {
+    if (d.address === address || d.label === displayName) {
+      d3.select(this).style('opacity', 1);
+    }
+  });
+
+  // Show only collection nodes this collector holds
+  d3.selectAll('.collection-node').each(function(d) {
+    if (heldCollections.has(d.id)) {
+      d3.select(this).style('opacity', 1);
+    }
+  });
+
+  // Show only links connected to this collector
+  d3.selectAll('.links line').each(function(d) {
+    const srcId = d.source?.id || d.source;
+    const tgtId = d.target?.id || d.target;
+    if (srcId === nodeId || tgtId === nodeId) {
+      d3.select(this).style('opacity', 1).style('stroke-width', 2).style('stroke', 'rgba(255,255,255,0.3)');
+    }
+  });
+
+  // Clear prior highlights + ripples
   d3.selectAll('.collector-node').classed('highlight', false).select('circle')
     .style('stroke', null).style('stroke-width', null).style('filter', null);
   d3.selectAll('.node-ripple').remove();
 
-  // Highlight selected node + add pulsing ripple rings
+  // Pulse + ripple on selected node
   d3.selectAll('.collector-node').each(function(d) {
     if (d.address === address || d.label === displayName) {
       const g = d3.select(this);
       g.classed('highlight', true);
-
-      // Add two offset ripple rings for a signal-emanation effect
       g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0);
       g.append('circle').attr('class', 'node-ripple').attr('cx', 0).attr('cy', 0)
         .style('animation-delay', '0.6s');
@@ -2039,8 +1997,9 @@ function selectCollector(address) {
     }
   });
 
-  // Update count label to show selected name
+  // Update count label
   document.getElementById('search-count').textContent = displayName;
+  state.selectedCollector = address;
 }
 
 // Close dropdown when clicking outside
@@ -2054,9 +2013,13 @@ function clearSearch() {
   const input = document.getElementById('collector-search');
   input.value = '';
   filterElevation('');
-  d3.selectAll('.collector-node').classed('highlight', false).select('circle')
-    .style('stroke', null).style('stroke-width', null).style('filter', null);
+  // Restore all terrain visibility
+  d3.selectAll('.collector-node').style('opacity', 1).classed('highlight', false)
+    .select('circle').style('stroke', null).style('stroke-width', null).style('filter', null);
+  d3.selectAll('.collection-node').style('opacity', 1);
+  d3.selectAll('.links line').style('opacity', 1).style('stroke-width', null).style('stroke', null);
   d3.selectAll('.node-ripple').remove();
+  state.selectedCollector = null;
   input.focus();
 }
 
@@ -2099,9 +2062,6 @@ async function init() {
 
   setLoaderProgress(80, 'Computing elevation...');
   renderElevation(state.collectors);
-
-  setLoaderProgress(95, 'Mapping affinity lines...');
-  renderAffinity(state.collectors);
 
   setLoaderProgress(100, 'Terrain ready');
 
