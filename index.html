@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MintFace — Collector Terrain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@privy-io/js-sdk-core@latest/dist/index.umd.js"></script>
+<style>
+  :root {
+    --void: #04040a;
+    --deep: #080812;
+    --surface: #0d0d1a;
+    --grid: rgba(100,120,200,0.08);
+    --grid-bright: rgba(100,120,200,0.18);
+    --ink: #e8e4d8;
+    --ink-dim: rgba(232,228,216,0.4);
+    --ink-faint: rgba(232,228,216,0.15);
+    --accent: #8b3a2a;
+    --accent-glow: rgba(139,58,42,0.3);
+    --survey: #c4a882;
+    --survey-dim: rgba(196,168,130,0.3);
+    --node-mintface: #e8c97a;
+    --node-artblocks: #7a9ee8;
+    --node-photography: #7ae8c4;
+    --node-human: #e87a9e;
+    --edge-affinity: rgba(200,180,120,0.25);
+    --edge-hold: rgba(255,255,255,0.06);
+    --mono: 'Space Mono', monospace;
+    --serif: 'Cormorant Garamond', Georgia, serif;
+    --elevation-low: #1a3a2a;
+    --elevation-mid: #2a5a3a;
+    --elevation-high: #4a8a5a;
+    --elevation-peak: #7ae8a0;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── SCAN LINE TEXTURE ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 40px;
+    background: linear-gradient(to bottom, var(--void), transparent);
+  }
+
+  .nav-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-decoration: none;
+  }
+
+  .nav-brand-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--survey);
+  }
+
+  .nav-brand-sub {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 28px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--survey); }
+
+  /* ── WALLET CONNECT BUTTON ── */
+  #wallet-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--survey);
+    background: none;
+    border: 1px solid var(--survey-dim);
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  #wallet-btn:hover {
+    background: var(--survey-dim);
+    border-color: var(--survey);
+  }
+
+  #wallet-btn.connected {
+    color: var(--node-mintface);
+    border-color: rgba(232,201,122,0.3);
+  }
+
+  /* ── HERO / TERRAIN SECTION ── */
+  #terrain {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #terrain-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Coordinate grid lines */
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .grid-line-bright { stroke: var(--grid-bright); stroke-width: 1; }
+
+  /* Survey tick marks */
+  .survey-tick { fill: none; stroke: var(--survey-dim); stroke-width: 1; }
+
+  /* Collection cluster labels */
+  .cluster-label {
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    fill: var(--ink-dim);
+  }
+
+  .cluster-label-main {
+    font-size: 10px;
+    fill: var(--survey);
+    letter-spacing: 0.25em;
+  }
+
+  /* Collector nodes */
+  .collector-node {
+    cursor: pointer;
+    transition: r 0.2s;
+  }
+
+  .collector-node circle {
+    stroke-width: 1.5;
+    transition: all 0.3s;
+  }
+
+  .collector-node:hover circle { stroke-width: 2.5; }
+
+  .collector-node text {
+    font-family: var(--mono);
+    font-size: 8px;
+    fill: var(--ink-dim);
+    pointer-events: none;
+  }
+
+  /* Collection anchor nodes */
+  .collection-node circle {
+    stroke-width: 2;
+  }
+
+  /* Edges */
+  .edge-hold { stroke: var(--edge-hold); stroke-width: 1; }
+  .edge-affinity-artblocks { stroke: var(--node-artblocks); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
+  .edge-affinity-photo { stroke: var(--node-photography); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
+  .edge-affinity-human { stroke: var(--node-human); stroke-width: 1.5; stroke-dasharray: 4,3; opacity: 0.4; }
+
+  /* Highlighted (connected wallet) */
+  .collector-node.highlight circle {
+    stroke: var(--node-mintface) !important;
+    stroke-width: 3 !important;
+    filter: drop-shadow(0 0 8px var(--node-mintface));
+  }
+
+  /* ── HUD overlays ── */
+  .hud {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    pointer-events: none;
+  }
+
+  .hud-tl { top: 80px; left: 40px; }
+  .hud-tr { top: 80px; right: 40px; text-align: right; }
+  .hud-bl { bottom: 40px; left: 40px; }
+  .hud-br { bottom: 40px; right: 40px; text-align: right; }
+
+  .hud-coord {
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* ── LEGEND ── */
+  .legend {
+    position: absolute;
+    bottom: 80px;
+    left: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    color: var(--ink-dim);
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-line {
+    width: 24px;
+    height: 1px;
+    flex-shrink: 0;
+    border-top: 1px dashed;
+  }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed;
+    background: rgba(4,4,10,0.95);
+    border: 1px solid var(--survey-dim);
+    padding: 16px 20px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 300;
+    max-width: 280px;
+  }
+
+  #tooltip.visible { opacity: 1; }
+
+  .tooltip-name {
+    font-size: 11px;
+    color: var(--survey);
+    letter-spacing: 0.15em;
+    margin-bottom: 8px;
+  }
+
+  .tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    font-size: 8px;
+    color: var(--ink-dim);
+    letter-spacing: 0.1em;
+    margin-bottom: 3px;
+  }
+
+  .tooltip-row span:last-child { color: var(--ink); }
+
+  .tooltip-collections {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .tooltip-tag {
+    font-size: 7px;
+    letter-spacing: 0.1em;
+    padding: 2px 6px;
+    border: 1px solid var(--survey-dim);
+    color: var(--survey);
+    text-transform: uppercase;
+  }
+
+  .tooltip-affinity-tag {
+    border-color: rgba(122,158,232,0.3);
+    color: var(--node-artblocks);
+  }
+
+  .tooltip-affinity-tag.photo {
+    border-color: rgba(122,232,196,0.3);
+    color: var(--node-photography);
+  }
+
+  .tooltip-affinity-tag.human {
+    border-color: rgba(232,122,158,0.3);
+    color: var(--node-human);
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    padding: 100px 0;
+    position: relative;
+  }
+
+  .section-header {
+    padding: 0 80px 60px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--grid-bright);
+    margin-bottom: 60px;
+  }
+
+  .section-eyebrow {
+    font-size: 8px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-family: var(--serif);
+    font-size: 48px;
+    font-weight: 300;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .section-title em {
+    font-style: italic;
+    color: var(--survey);
+  }
+
+  .section-meta {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--ink-faint);
+    text-align: right;
+  }
+
+  /* ── ELEVATION SECTION ── */
+  #elevation {
+    background: var(--deep);
+  }
+
+  .elevation-grid {
+    padding: 0 80px;
+    display: grid;
+    gap: 2px;
+  }
+
+  .elevation-row {
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--grid);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .elevation-row:hover {
+    background: rgba(255,255,255,0.02);
+  }
+
+  .elevation-row.is-self {
+    border-left: 2px solid var(--node-mintface);
+    padding-left: 12px;
+    background: rgba(232,201,122,0.03);
+  }
+
+  .elevation-collector {
+    font-size: 10px;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .elevation-bar-wrap {
+    position: relative;
+    height: 24px;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .elevation-bar {
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    transition: width 1s ease;
+  }
+
+  .elevation-fill {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right,
+      var(--elevation-low),
+      var(--elevation-mid),
+      var(--elevation-high),
+      var(--elevation-peak)
+    );
+  }
+
+  .elevation-peaks {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .elevation-peak-mark {
+    width: 2px;
+    background: rgba(122,232,160,0.6);
+    margin-right: 1px;
+  }
+
+  .elevation-collections {
+    position: absolute;
+    inset: 0;
+    display: flex;
+  }
+
+  .elevation-segment {
+    height: 100%;
+    border-right: 1px solid rgba(0,0,0,0.4);
+  }
+
+  .elevation-pct {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink-dim);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .elevation-pct.complete {
+    color: var(--elevation-peak);
+  }
+
+  /* Elevation axis */
+  .elevation-axis {
+    padding: 20px 80px 0;
+    display: grid;
+    grid-template-columns: 200px 1fr 80px;
+    gap: 20px;
+  }
+
+  .elevation-axis-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 7px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+  }
+
+  /* ── AFFINITY SECTION ── */
+  #affinity {
+    background: var(--surface);
+  }
+
+  .affinity-panels {
+    padding: 0 80px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2px;
+  }
+
+  .affinity-panel {
+    background: rgba(255,255,255,0.02);
+    padding: 40px;
+    border: 1px solid var(--grid);
+    position: relative;
+  }
+
+  .affinity-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .affinity-panel.artblocks::before { background: var(--node-artblocks); }
+  .affinity-panel.photography::before { background: var(--node-photography); }
+  .affinity-panel.human::before { background: var(--node-human); }
+
+  .affinity-panel-eyebrow {
+    font-size: 7px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .affinity-panel.artblocks .affinity-panel-eyebrow { color: var(--node-artblocks); }
+  .affinity-panel.photography .affinity-panel-eyebrow { color: var(--node-photography); }
+  .affinity-panel.human .affinity-panel-eyebrow { color: var(--node-human); }
+
+  .affinity-panel-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--ink);
+    margin-bottom: 4px;
+    line-height: 1.1;
+  }
+
+  .affinity-panel-sub {
+    font-size: 8px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    margin-bottom: 28px;
+  }
+
+  .affinity-stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--grid);
+    font-size: 9px;
+  }
+
+  .affinity-stat-label { color: var(--ink-faint); letter-spacing: 0.1em; }
+  .affinity-stat-value { color: var(--survey); }
+
+  .affinity-collectors {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .affinity-collectors::-webkit-scrollbar { width: 2px; }
+  .affinity-collectors::-webkit-scrollbar-track { background: transparent; }
+  .affinity-collectors::-webkit-scrollbar-thumb { background: var(--survey-dim); }
+
+  .affinity-collector-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 8px;
+  }
+
+  .affinity-collector-name {
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    font-size: 9px;
+  }
+
+  .affinity-collector-depth {
+    display: flex;
+    gap: 3px;
+  }
+
+  .depth-pip {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+  }
+
+  .depth-pip.artblocks { background: var(--node-artblocks); }
+  .depth-pip.photo { background: var(--node-photography); }
+  .depth-pip.human { background: var(--node-human); }
+  .depth-pip.empty { background: var(--grid-bright); }
+
+  /* ── LOADING STATE ── */
+  .loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--void);
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    transition: opacity 0.8s;
+  }
+
+  .loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .loading-title {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 300;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+  }
+
+  .loading-status {
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    height: 20px;
+  }
+
+  .loading-progress {
+    width: 200px;
+    height: 1px;
+    background: var(--grid-bright);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loading-bar {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    background: var(--survey);
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  /* survey crosshair on loading */
+  .loading-cross {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 8px;
+  }
+
+  .loading-cross::before,
+  .loading-cross::after {
+    content: '';
+    position: absolute;
+    background: var(--survey-dim);
+  }
+
+  .loading-cross::before { width: 1px; height: 100%; left: 50%; }
+  .loading-cross::after { width: 100%; height: 1px; top: 50%; }
+
+  .loading-cross-inner {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--survey);
+    border-radius: 50%;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse 1.5s ease infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(2); opacity: 0.3; }
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    nav { padding: 16px 20px; }
+    .nav-links { display: none; }
+    .section-header { padding: 0 24px 40px; }
+    .section-title { font-size: 32px; }
+    .elevation-grid { padding: 0 24px; }
+    .elevation-axis { padding: 20px 24px 0; }
+    .affinity-panels { padding: 0 24px; grid-template-columns: 1fr; }
+    .hud-tr, .hud-bl, .hud-br { display: none; }
+    .legend { left: 20px; bottom: 60px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-overlay" id="loader">
+  <div class="loading-cross"><div class="loading-cross-inner"></div></div>
+  <div class="loading-title">Surveying the Terrain</div>
+  <div class="loading-status" id="loader-status">Initialising...</div>
+  <div class="loading-progress"><div class="loading-bar" id="loader-bar"></div></div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <div class="tooltip-name" id="tt-name"></div>
+  <div class="tooltip-row"><span>MintFace holds</span><span id="tt-mf-count"></span></div>
+  <div class="tooltip-row"><span>Collections</span><span id="tt-collections"></span></div>
+  <div class="tooltip-row" id="tt-affinity-row" style="display:none"><span>Affinity</span><span id="tt-affinity"></span></div>
+  <div class="tooltip-collections" id="tt-tags"></div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <a href="https://mintface.art" class="nav-brand">
+    <span class="nav-brand-title">MintFace</span>
+    <span class="nav-brand-sub">Collector Terrain</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#terrain">Terrain</a></li>
+    <li><a href="#elevation">Elevation</a></li>
+    <li><a href="#affinity">Affinity</a></li>
+  </ul>
+  <div class="nav-right">
+    <button id="wallet-btn" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+</nav>
+
+<!-- ── TERRAIN ── -->
+<section id="terrain">
+  <svg id="terrain-svg"></svg>
+
+  <div class="hud hud-tl">
+    <span class="hud-coord" id="hud-collectors">— collectors</span>
+    <span class="hud-coord" id="hud-collections">— collections</span>
+    <span class="hud-coord" id="hud-affinity-count">— affinity links</span>
+  </div>
+
+  <div class="hud hud-tr">
+    <span class="hud-coord">36°51'S 174°45'E</span>
+    <span class="hud-coord">Auckland — NZ</span>
+    <span class="hud-coord" id="hud-time"></span>
+  </div>
+
+  <div class="hud hud-br">
+    <span class="hud-coord">Survey Grid 1:2400</span>
+    <span class="hud-coord">WGS84 / UTM Zone 60S</span>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-mintface)"></div>
+      MintFace collector
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="width:12px;height:12px;background:none;border:2px solid var(--survey)"></div>
+      Collection anchor
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="border-color:var(--node-artblocks)"></div>
+      Art Blocks affinity
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="border-color:var(--node-photography)"></div>
+      Photography affinity
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="border-color:var(--node-human)"></div>
+      Human condition affinity
+    </div>
+  </div>
+</section>
+
+<!-- ── ELEVATION ── -->
+<section id="elevation">
+  <div class="section-header">
+    <div>
+      <div class="section-eyebrow">Vertical Set</div>
+      <h2 class="section-title">Elevation<br><em>Profile</em></h2>
+    </div>
+    <div class="section-meta">
+      <div>Completion = 1 work from each collection</div>
+      <div>8 collections · Full ridge = 100%</div>
+    </div>
+  </div>
+
+  <div class="elevation-axis">
+    <div></div>
+    <div class="elevation-axis-labels">
+      <span>0m</span>
+      <span>BASECAMP</span>
+      <span>RIDGE</span>
+      <span>PEAK</span>
+      <span>SUMMIT</span>
+    </div>
+    <div></div>
+  </div>
+
+  <div class="elevation-grid" id="elevation-grid">
+    <!-- Populated by JS -->
+  </div>
+</section>
+
+<!-- ── AFFINITY ── -->
+<section id="affinity">
+  <div class="section-header">
+    <div>
+      <div class="section-eyebrow">Cross-Collection Intelligence</div>
+      <h2 class="section-title">Affinity<br><em>Index</em></h2>
+    </div>
+    <div class="section-meta">
+      <div>Collectors of MintFace also hold</div>
+      <div>sight-lines between terrains</div>
+    </div>
+  </div>
+
+  <div class="affinity-panels">
+
+    <div class="affinity-panel artblocks">
+      <div class="affinity-panel-eyebrow">Generative Art</div>
+      <div class="affinity-panel-title">Art Blocks<br>Curated</div>
+      <div class="affinity-panel-sub">Patrimora collectors × generative art</div>
+      <div class="affinity-stat"><span class="affinity-stat-label">OVERLAP</span><span class="affinity-stat-value" id="ab-overlap">—</span></div>
+      <div class="affinity-stat"><span class="affinity-stat-label">PROJECTS HELD</span><span class="affinity-stat-value" id="ab-projects">—</span></div>
+      <div class="affinity-stat"><span class="affinity-stat-label">DEEPEST HOLD</span><span class="affinity-stat-value" id="ab-depth">—</span></div>
+      <div class="affinity-collectors" id="ab-collectors">
+        <div style="color:var(--ink-faint);font-size:9px;padding:16px 0">Loading...</div>
+      </div>
+    </div>
+
+    <div class="affinity-panel photography">
+      <div class="affinity-panel-eyebrow">1/1 Photography</div>
+      <div class="affinity-panel-title">Photography<br>Icons</div>
+      <div class="affinity-panel-sub">Geodetic Moments collectors × photography</div>
+      <div class="affinity-stat"><span class="affinity-stat-label">OVERLAP</span><span class="affinity-stat-value" id="ph-overlap">—</span></div>
+      <div class="affinity-stat"><span class="affinity-stat-label">ARTISTS HELD</span><span class="affinity-stat-value" id="ph-artists">—</span></div>
+      <div class="affinity-stat"><span class="affinity-stat-label">DEEPEST HOLD</span><span class="affinity-stat-value" id="ph-depth">—</span></div>
+      <div class="affinity-collectors" id="ph-collectors">
+        <div style="color:var(--ink-faint);font-size:9px;padding:16px 0">Loading...</div>
+      </div>
+    </div>
+
+    <div class="affinity-panel human">
+      <div class="affinity-panel-eyebrow">Human Condition</div>
+      <div class="affinity-panel-title">Apocalypse ·<br>Underscore · Haffkta</div>
+      <div class="affinity-panel-sub">Two Burdens collectors × the human condition</div>
+      <div class="affinity-stat"><span class="affinity-stat-label">OVERLAP</span><span class="affinity-stat-value" id="hc-overlap">—</span></div>
+      <div class="affinity-stat"><span class="affinity-stat-label">SERIES HELD</span><span class="affinity-stat-value" id="hc-series">—</span></div>
+      <div class="affinity-stat"><span class="affinity-stat-label">DEEPEST HOLD</span><span class="affinity-stat-value" id="hc-depth">—</span></div>
+      <div class="affinity-collectors" id="hc-collectors">
+        <div style="color:var(--ink-faint);font-size:9px;padding:16px 0">Loading...</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DATA — Contract addresses & collection config
+// ═══════════════════════════════════════════════════════════════
+
+const MINTFACE_COLLECTIONS = [
+  { id: 'artificial-flowers', name: 'Artificial Flowers', year: 2025, contract: '0xd64ac59835a9951f34472239ba70b44c5bebe90d', chain: 'ethereum' },
+  { id: 'patrimora',          name: 'Patrimora',          year: 2025, contract: '0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8', chain: 'ethereum' },
+  { id: 'two-burdens',        name: 'Two Burdens',        year: 2024, contract: '0xe1d1f99505a13d20b25d5ef32280771d7eb5ed09', chain: 'ethereum' },
+  { id: 'recursive-mind',     name: 'Recursive Mind',     year: 2023, contract: null, chain: 'bitcoin' }, // BTC Ordinals
+  { id: 'geodetica',          name: 'Geodetica',          year: 2022, contract: '0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933', chain: 'ethereum' },
+  { id: 'roads-rivers',       name: 'Roads & Rivers',     year: 2022, contract: '0x18bd004e13258f569cedfbb537ba329e4730ee67', chain: 'ethereum' },
+  { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum' },
+  { id: 'geodetic-home',      name: 'Geodetic Home',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum' },
+];
+
+// Art Blocks Curated — factory contract + key project IDs
+// These project IDs map to token ranges: projectId * 1,000,000 to (projectId+1)*1,000,000 - 1
+const AB_FACTORY = '0xa7d8d9ef8d8ce8992df33d8b8cf4aebabd5bd270';
+const AB_V3 = '0x99a9b7c1116f9ceeb1652de04d5969cce509b069';
+const AB_CURATED_SLUGS = [
+  'chromie-squiggle-by-snowfro',
+  'fidenza-by-tyler-hobbs',
+  'ringers-by-dmitri-cherniak',
+  'archetype-by-kjetil-golid',
+  'meridian-by-matt-deslauriers',
+  'algobots-by-stina-jones',
+  'subscapes-by-matt-deslauriers',
+  'geometry-runners-by-rich-lord',
+  'incomplete-control-by-aaron-penne',
+  'elevated-deconstructions-by-luxpris',
+  'loom-by-anna-lucia',
+  'cellular-automata-by-hideo-matsuzaki',
+  'flow-field-by-phil-linden',
+  'bytebeats-by-dan-gries',
+  'vvttmmnn-by-alexis-andre',
+  'the-wrong-crowd-by-simon-de-la-rouviere',
+  'century-rings-by-snowfro',
+  'overnight-by-casey-reas',
+  'memories-of-qilin-by-emily-xie',
+  'grids-by-zeblocks',
+];
+
+// Apocalypse contracts
+const APOCALYPSE_CONTRACTS = [
+  { name: 'Meetings',    contract: '0x2318954d3add6175545d482bd648093740201805' },
+  { name: 'The Origins', contract: '0x486f86728ba157cbd21f71cee7ff895e2892f9d6' },
+  { name: 'Oversoul',    contract: '0x8fb9051d464ef8fed7832e05bacc675699a84401' },
+];
+
+// Underscore contracts
+const UNDERSCORE_CONTRACTS = [
+  { name: 'Underscore 1', contract: '0x3595c12c205bcb1e1db87800084e604943ebbb47' },
+  { name: 'Underscore 2', contract: '0xea67bec2189F6bACaA974c07A922cB82cbcB7802' },
+  { name: 'Underscore 3', contract: '0xbfdb529c8abb6f81b6d14d2751fc9d8bdbcf9bd9' },
+];
+
+// Haffkta contracts
+const HAFFKTA_CONTRACTS = [
+  { name: 'Declaration of Independence', contract: '0x530e295f7226ebb8e8021f87ea6dcc0d52c6da29' },
+  { name: 'Bullpen',                      contract: '0x4365b5313efbff83e8e112a8519998e6677ebb70' },
+];
+
+// Photography icons from MintFace Private Collection list
+const PHOTO_ARTISTS = [
+  'alejandro-cartegna', 'andginja', 'andre-messina', 'ben-zank',
+  'billy-dinh', 'brian-minear', 'cath-simard', 'chi-modu',
+  'colorworks', 'cowboy-killer', 'david-loh', 'drifter-shoots',
+  'ella-morton', 'guido', 'gustavo-mondragon', 'hans-kemp',
+  'imed-kolli', 'joelle-b', 'justin-aversano', 'marat-safin',
+  'meeshuno', 'mellback', 'on-the-roofs', 'reuben-wu',
+  'roberto-alcarez', 'sergio-antoni', 'timmboslice', 'tokyoluv',
+  'tony-sellen', 'tylers-journey', 'zay-yar-lin', 'zigmarillion',
+];
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+
+let state = {
+  collectors: new Map(),    // wallet -> { ens, mintfaceHolds[], affinityHolds{} }
+  connectedWallet: null,
+  graphNodes: [],
+  graphLinks: [],
+};
+
+// ═══════════════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+async function openSeaFetch(path, params = {}) {
+  const qs = new URLSearchParams({ path, ...params }).toString();
+  const res = await fetch(`/api/opensea?${qs}`);
+  if (!res.ok) throw new Error(`OpenSea ${res.status}: ${path}`);
+  return res.json();
+}
+
+async function resolveENS(address) {
+  try {
+    const res = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
+    const data = await res.json();
+    return data.name || truncateAddress(address);
+  } catch {
+    return truncateAddress(address);
+  }
+}
+
+function truncateAddress(addr) {
+  if (!addr) return '—';
+  return `${addr.slice(0,6)}...${addr.slice(-4)}`;
+}
+
+// Get all NFT holders for a contract
+async function getHolders(contract, chain = 'ethereum', limit = 200) {
+  const holders = new Set();
+  let next = null;
+  let page = 0;
+  do {
+    const params = { limit: 50 };
+    if (next) params.next = next;
+    try {
+      const data = await openSeaFetch(`chain/${chain}/contract/${contract}/nfts`, params);
+      (data.nfts || []).forEach(nft => {
+        if (nft.owners) nft.owners.forEach(o => holders.add(o.address.toLowerCase()));
+      });
+      next = data.next;
+      page++;
+    } catch (e) {
+      console.warn('getHolders error:', e);
+      break;
+    }
+  } while (next && holders.size < limit && page < 10);
+  return holders;
+}
+
+// Check if a wallet holds from a list of contracts/slugs
+async function checkAffinityContracts(wallet, contracts) {
+  let count = 0;
+  const held = [];
+  for (const { name, contract } of contracts) {
+    try {
+      const data = await openSeaFetch(`chain/ethereum/account/${wallet}/nfts`, {
+        collection: contract,
+        limit: 1
+      });
+      if (data.nfts && data.nfts.length > 0) {
+        count++;
+        held.push(name);
+      }
+    } catch {}
+  }
+  return { count, held };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEMO DATA — used when API not yet loaded / for initial render
+// ═══════════════════════════════════════════════════════════════
+
+function generateDemoData() {
+  const names = [
+    'snowfro.eth','punk6529.eth','cozomo.eth','pranksy.eth','gmoney.eth',
+    'richerd.eth','dingaling.eth','beanie.eth','j1mmy.eth','punk4156.eth',
+    'seedphrase.eth','slimesunday.eth','hackatao.eth','xcopy.eth','pak.eth',
+    'refik.eth','tyler.eth','dmitri.eth','kjetil.eth','anna.eth',
+    '0x3f2a...b91c','0x8d4e...f22a','0x1c9b...4401','0xa77f...cc03','0x5512...de88',
+  ];
+
+  const mfCollections = MINTFACE_COLLECTIONS.map(c => c.id);
+  const collectors = new Map();
+
+  names.forEach((name, i) => {
+    const holdCount = Math.floor(Math.random() * 5) + 1;
+    const shuffled = [...mfCollections].sort(() => Math.random() - 0.5);
+    const holds = shuffled.slice(0, holdCount);
+
+    const hasAB = Math.random() > 0.5 && holds.includes('patrimora');
+    const hasPhoto = Math.random() > 0.5 && holds.includes('geodetic-moments');
+    const hasHuman = Math.random() > 0.5 && holds.includes('two-burdens');
+
+    collectors.set(name, {
+      ens: name,
+      address: `0x${Math.random().toString(16).slice(2,12)}`,
+      mintfaceHolds: holds,
+      affinityHolds: {
+        artblocks: hasAB ? Math.floor(Math.random() * 5) + 1 : 0,
+        photography: hasPhoto ? Math.floor(Math.random() * 4) + 1 : 0,
+        human: hasHuman ? Math.floor(Math.random() * 3) + 1 : 0,
+      }
+    });
+  });
+
+  return collectors;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TERRAIN GRAPH — D3 Force
+// ═══════════════════════════════════════════════════════════════
+
+function buildGraph(collectors) {
+  const nodes = [];
+  const links = [];
+
+  // Collection anchor nodes
+  MINTFACE_COLLECTIONS.forEach((col, i) => {
+    nodes.push({
+      id: col.id,
+      type: 'collection',
+      label: col.name,
+      year: col.year,
+      r: 18,
+    });
+  });
+
+  // Collector nodes
+  collectors.forEach((data, ens) => {
+    const nodeId = `collector-${ens}`;
+    nodes.push({
+      id: nodeId,
+      type: 'collector',
+      label: data.ens,
+      address: data.address,
+      holds: data.mintfaceHolds,
+      affinity: data.affinityHolds,
+      r: 5 + data.mintfaceHolds.length * 1.5,
+    });
+
+    // Links to each MintFace collection they hold
+    data.mintfaceHolds.forEach(colId => {
+      links.push({
+        source: nodeId,
+        target: colId,
+        type: 'hold',
+      });
+    });
+
+    // Affinity links
+    if (data.affinityHolds.artblocks > 0) {
+      links.push({ source: nodeId, target: 'patrimora', type: 'affinity-artblocks' });
+    }
+    if (data.affinityHolds.photography > 0) {
+      links.push({ source: nodeId, target: 'geodetic-moments', type: 'affinity-photo' });
+    }
+    if (data.affinityHolds.human > 0) {
+      links.push({ source: nodeId, target: 'two-burdens', type: 'affinity-human' });
+    }
+  });
+
+  return { nodes, links };
+}
+
+function renderTerrain(collectors) {
+  const svg = d3.select('#terrain-svg');
+  svg.selectAll('*').remove();
+
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  // Survey grid
+  const gridG = svg.append('g').attr('class', 'grid');
+  const gridSpacing = 80;
+
+  for (let x = 0; x < W; x += gridSpacing) {
+    gridG.append('line')
+      .attr('class', x % (gridSpacing * 5) === 0 ? 'grid-line-bright' : 'grid-line')
+      .attr('x1', x).attr('y1', 0).attr('x2', x).attr('y2', H);
+  }
+  for (let y = 0; y < H; y += gridSpacing) {
+    gridG.append('line')
+      .attr('class', y % (gridSpacing * 5) === 0 ? 'grid-line-bright' : 'grid-line')
+      .attr('x1', 0).attr('y1', y).attr('x2', W).attr('y2', y);
+  }
+
+  // Survey tick marks at intersections
+  for (let x = 0; x < W; x += gridSpacing * 5) {
+    for (let y = 0; y < H; y += gridSpacing * 5) {
+      gridG.append('line').attr('class','survey-tick')
+        .attr('x1', x-4).attr('y1', y).attr('x2', x+4).attr('y2', y);
+      gridG.append('line').attr('class','survey-tick')
+        .attr('x1', x).attr('y1', y-4).attr('x2', x).attr('y2', y+4);
+    }
+  }
+
+  const { nodes, links } = buildGraph(collectors);
+  state.graphNodes = nodes;
+  state.graphLinks = links;
+
+  // D3 force simulation
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
+      if (d.type === 'hold') return 60 + Math.random() * 40;
+      return 120;
+    }).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(d => d.type === 'collection' ? -400 : -80))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide().radius(d => d.r + 8))
+    .alphaDecay(0.02);
+
+  const mainG = svg.append('g').attr('class', 'main');
+
+  // Zoom
+  svg.call(d3.zoom()
+    .scaleExtent([0.3, 3])
+    .on('zoom', (event) => mainG.attr('transform', event.transform))
+  );
+
+  // Links
+  const linkG = mainG.append('g').attr('class', 'links');
+  const linkSel = linkG.selectAll('line')
+    .data(links)
+    .join('line')
+    .attr('class', d => `edge-${d.type}`);
+
+  // Collection nodes
+  const collectionG = mainG.append('g').attr('class', 'collections');
+  const colNodes = nodes.filter(d => d.type === 'collection');
+
+  const colSel = collectionG.selectAll('.collection-node')
+    .data(colNodes)
+    .join('g')
+    .attr('class', 'collection-node');
+
+  colSel.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', 'none')
+    .attr('stroke', 'var(--survey)')
+    .attr('stroke-width', 2);
+
+  // Inner diamond
+  colSel.append('polygon')
+    .attr('points', d => {
+      const r = d.r * 0.5;
+      return `0,${-r} ${r},0 0,${r} ${-r},0`;
+    })
+    .attr('fill', 'var(--survey)')
+    .attr('opacity', 0.6);
+
+  colSel.append('text')
+    .attr('class', 'cluster-label-main')
+    .attr('y', d => -(d.r + 8))
+    .attr('text-anchor', 'middle')
+    .text(d => d.label);
+
+  colSel.append('text')
+    .attr('class', 'cluster-label')
+    .attr('y', d => d.r + 16)
+    .attr('text-anchor', 'middle')
+    .text(d => d.year);
+
+  // Collector nodes
+  const collectorG = mainG.append('g').attr('class', 'collectors');
+  const collectorsData = nodes.filter(d => d.type === 'collector');
+
+  const collectorSel = collectorG.selectAll('.collector-node')
+    .data(collectorsData)
+    .join('g')
+    .attr('class', 'collector-node')
+    .attr('data-id', d => d.id)
+    .on('mouseover', showTooltip)
+    .on('mousemove', moveTooltip)
+    .on('mouseout', hideTooltip)
+    .on('click', (event, d) => highlightCollector(d));
+
+  collectorSel.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => {
+      if (d.affinity.artblocks > 0 && d.affinity.photography > 0) return 'var(--survey)';
+      if (d.affinity.artblocks > 0) return 'var(--node-artblocks)';
+      if (d.affinity.photography > 0) return 'var(--node-photography)';
+      if (d.affinity.human > 0) return 'var(--node-human)';
+      return 'var(--node-mintface)';
+    })
+    .attr('fill-opacity', 0.7)
+    .attr('stroke', d => {
+      if (d.affinity.artblocks > 0) return 'var(--node-artblocks)';
+      if (d.affinity.photography > 0) return 'var(--node-photography)';
+      if (d.affinity.human > 0) return 'var(--node-human)';
+      return 'rgba(232,201,122,0.4)';
+    });
+
+  collectorSel.append('text')
+    .attr('y', d => d.r + 12)
+    .attr('text-anchor', 'middle')
+    .text(d => d.label.length > 12 ? d.label.slice(0,10)+'…' : d.label);
+
+  // Tick
+  simulation.on('tick', () => {
+    linkSel
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y);
+
+    colSel.attr('transform', d => `translate(${d.x},${d.y})`);
+    collectorSel.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  // HUD stats
+  const affinityLinks = links.filter(l => l.type.startsWith('affinity'));
+  document.getElementById('hud-collectors').textContent = `${collectorsData.length} collectors`;
+  document.getElementById('hud-collections').textContent = `${colNodes.length} collections`;
+  document.getElementById('hud-affinity-count').textContent = `${affinityLinks.length} affinity links`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════════════════════════════
+
+function showTooltip(event, d) {
+  const tt = document.getElementById('tooltip');
+  document.getElementById('tt-name').textContent = d.label;
+  document.getElementById('tt-mf-count').textContent = `${d.holds.length} work${d.holds.length !== 1 ? 's' : ''}`;
+  document.getElementById('tt-collections').textContent = d.holds.length;
+
+  const affinities = [];
+  if (d.affinity.artblocks > 0) affinities.push('Art Blocks');
+  if (d.affinity.photography > 0) affinities.push('Photography');
+  if (d.affinity.human > 0) affinities.push('Human Condition');
+
+  const affinityRow = document.getElementById('tt-affinity-row');
+  if (affinities.length > 0) {
+    document.getElementById('tt-affinity').textContent = affinities.join(' · ');
+    affinityRow.style.display = 'flex';
+  } else {
+    affinityRow.style.display = 'none';
+  }
+
+  const tagsDiv = document.getElementById('tt-tags');
+  tagsDiv.innerHTML = '';
+  d.holds.forEach(colId => {
+    const col = MINTFACE_COLLECTIONS.find(c => c.id === colId);
+    if (col) {
+      const tag = document.createElement('div');
+      tag.className = 'tooltip-tag';
+      tag.textContent = col.name;
+      tagsDiv.appendChild(tag);
+    }
+  });
+
+  if (d.affinity.artblocks > 0) {
+    const t = document.createElement('div');
+    t.className = 'tooltip-tag affinity-tag';
+    t.textContent = `AB ×${d.affinity.artblocks}`;
+    tagsDiv.appendChild(t);
+  }
+  if (d.affinity.photography > 0) {
+    const t = document.createElement('div');
+    t.className = 'tooltip-tag affinity-tag photo';
+    t.textContent = `Photo ×${d.affinity.photography}`;
+    tagsDiv.appendChild(t);
+  }
+  if (d.affinity.human > 0) {
+    const t = document.createElement('div');
+    t.className = 'tooltip-tag affinity-tag human';
+    t.textContent = `HC ×${d.affinity.human}`;
+    tagsDiv.appendChild(t);
+  }
+
+  tt.classList.add('visible');
+  moveTooltip(event);
+}
+
+function moveTooltip(event) {
+  const tt = document.getElementById('tooltip');
+  const x = event.clientX + 16;
+  const y = event.clientY - 10;
+  tt.style.left = Math.min(x, window.innerWidth - 300) + 'px';
+  tt.style.top = Math.max(y, 10) + 'px';
+}
+
+function hideTooltip() {
+  document.getElementById('tooltip').classList.remove('visible');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ELEVATION
+// ═══════════════════════════════════════════════════════════════
+
+function renderElevation(collectors, connectedWallet = null) {
+  const grid = document.getElementById('elevation-grid');
+  grid.innerHTML = '';
+
+  const colCount = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum').length;
+
+  // Sort by completion %
+  const sorted = [...collectors.entries()].sort((a, b) => {
+    return b[1].mintfaceHolds.length - a[1].mintfaceHolds.length;
+  });
+
+  sorted.forEach(([ens, data]) => {
+    const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
+    const isSelf = connectedWallet && ens === connectedWallet;
+
+    const row = document.createElement('div');
+    row.className = `elevation-row${isSelf ? ' is-self' : ''}`;
+
+    // Name
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'elevation-collector';
+    nameDiv.textContent = isSelf ? `▶ ${ens}` : ens;
+    row.appendChild(nameDiv);
+
+    // Bar
+    const barWrap = document.createElement('div');
+    barWrap.className = 'elevation-bar-wrap';
+
+    const bar = document.createElement('div');
+    bar.className = 'elevation-bar';
+    bar.style.width = '0%';
+
+    const fill = document.createElement('div');
+    fill.className = 'elevation-fill';
+    bar.appendChild(fill);
+
+    // Collection segments overlay
+    const segs = document.createElement('div');
+    segs.className = 'elevation-collections';
+    MINTFACE_COLLECTIONS.forEach(col => {
+      const seg = document.createElement('div');
+      seg.className = 'elevation-segment';
+      seg.style.width = `${100 / colCount}%`;
+      seg.style.background = data.mintfaceHolds.includes(col.id)
+        ? `rgba(122,232,160,0.15)`
+        : 'transparent';
+      segs.appendChild(seg);
+    });
+    bar.appendChild(segs);
+    barWrap.appendChild(bar);
+    row.appendChild(barWrap);
+
+    // Pct
+    const pctDiv = document.createElement('div');
+    pctDiv.className = `elevation-pct${pct === 100 ? ' complete' : ''}`;
+    pctDiv.textContent = `${pct}%`;
+    row.appendChild(pctDiv);
+
+    grid.appendChild(row);
+
+    // Animate bar in
+    setTimeout(() => { bar.style.width = `${pct}%`; }, 100);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AFFINITY PANELS
+// ═══════════════════════════════════════════════════════════════
+
+function renderAffinity(collectors) {
+  // Art Blocks (Patrimora holders)
+  const patrimHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('patrimora'));
+  const abOverlap = patrimHolders.filter(([, d]) => d.affinityHolds.artblocks > 0);
+  document.getElementById('ab-overlap').textContent = `${abOverlap.length} / ${patrimHolders.length}`;
+  const abProjects = abOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.artblocks, 0);
+  document.getElementById('ab-projects').textContent = abProjects;
+  const abDeepest = abOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.artblocks), 0);
+  document.getElementById('ab-depth').textContent = `${abDeepest} projects`;
+
+  const abList = document.getElementById('ab-collectors');
+  abList.innerHTML = '';
+  abOverlap.sort((a, b) => b[1].affinityHolds.artblocks - a[1].affinityHolds.artblocks).forEach(([ens, d]) => {
+    const r = document.createElement('div');
+    r.className = 'affinity-collector-row';
+    const name = document.createElement('div');
+    name.className = 'affinity-collector-name';
+    name.textContent = ens;
+    const depth = document.createElement('div');
+    depth.className = 'affinity-collector-depth';
+    for (let i = 0; i < Math.min(d.affinityHolds.artblocks, 8); i++) {
+      const pip = document.createElement('div');
+      pip.className = 'depth-pip artblocks';
+      depth.appendChild(pip);
+    }
+    r.appendChild(name); r.appendChild(depth);
+    abList.appendChild(r);
+  });
+  if (abOverlap.length === 0) abList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
+
+  // Photography (Geodetic Moments holders)
+  const geoHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('geodetic-moments'));
+  const phOverlap = geoHolders.filter(([, d]) => d.affinityHolds.photography > 0);
+  document.getElementById('ph-overlap').textContent = `${phOverlap.length} / ${geoHolders.length}`;
+  const phArtists = phOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.photography, 0);
+  document.getElementById('ph-artists').textContent = phArtists;
+  const phDeepest = phOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.photography), 0);
+  document.getElementById('ph-depth').textContent = `${phDeepest} artists`;
+
+  const phList = document.getElementById('ph-collectors');
+  phList.innerHTML = '';
+  phOverlap.sort((a, b) => b[1].affinityHolds.photography - a[1].affinityHolds.photography).forEach(([ens, d]) => {
+    const r = document.createElement('div');
+    r.className = 'affinity-collector-row';
+    const name = document.createElement('div');
+    name.className = 'affinity-collector-name';
+    name.textContent = ens;
+    const depth = document.createElement('div');
+    depth.className = 'affinity-collector-depth';
+    for (let i = 0; i < Math.min(d.affinityHolds.photography, 8); i++) {
+      const pip = document.createElement('div');
+      pip.className = 'depth-pip photo';
+      depth.appendChild(pip);
+    }
+    r.appendChild(name); r.appendChild(depth);
+    phList.appendChild(r);
+  });
+  if (phOverlap.length === 0) phList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
+
+  // Human Condition (Two Burdens holders)
+  const tbHolders = [...collectors.entries()].filter(([, d]) => d.mintfaceHolds.includes('two-burdens'));
+  const hcOverlap = tbHolders.filter(([, d]) => d.affinityHolds.human > 0);
+  document.getElementById('hc-overlap').textContent = `${hcOverlap.length} / ${tbHolders.length}`;
+  const hcSeries = hcOverlap.reduce((sum, [, d]) => sum + d.affinityHolds.human, 0);
+  document.getElementById('hc-series').textContent = hcSeries;
+  const hcDeepest = hcOverlap.reduce((max, [, d]) => Math.max(max, d.affinityHolds.human), 0);
+  document.getElementById('hc-depth').textContent = `${hcDeepest} series`;
+
+  const hcList = document.getElementById('hc-collectors');
+  hcList.innerHTML = '';
+  hcOverlap.sort((a, b) => b[1].affinityHolds.human - a[1].affinityHolds.human).forEach(([ens, d]) => {
+    const r = document.createElement('div');
+    r.className = 'affinity-collector-row';
+    const name = document.createElement('div');
+    name.className = 'affinity-collector-name';
+    name.textContent = ens;
+    const depth = document.createElement('div');
+    depth.className = 'affinity-collector-depth';
+    for (let i = 0; i < Math.min(d.affinityHolds.human, 8); i++) {
+      const pip = document.createElement('div');
+      pip.className = 'depth-pip human';
+      depth.appendChild(pip);
+    }
+    r.appendChild(name); r.appendChild(depth);
+    hcList.appendChild(r);
+  });
+  if (hcOverlap.length === 0) hcList.innerHTML = '<div style="color:var(--ink-faint);font-size:9px;padding:16px 0">No overlap found</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WALLET CONNECT (Privy)
+// ═══════════════════════════════════════════════════════════════
+
+let privyClient = null;
+
+async function connectWallet() {
+  const btn = document.getElementById('wallet-btn');
+
+  // If already connected, show info
+  if (state.connectedWallet) {
+    alert(`Connected: ${state.connectedWallet}`);
+    return;
+  }
+
+  // Privy — initialise if needed
+  // In production, replace APP_ID with your Privy app ID
+  // For now we use a direct wallet connect via window.ethereum
+  if (window.ethereum) {
+    try {
+      btn.textContent = 'Connecting...';
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const wallet = accounts[0].toLowerCase();
+
+      // Resolve ENS
+      const ens = await resolveENS(wallet);
+      state.connectedWallet = ens;
+
+      btn.textContent = ens.length > 16 ? ens.slice(0,14)+'…' : ens;
+      btn.classList.add('connected');
+
+      // Find this collector in the map
+      highlightWalletInTerrain(wallet, ens);
+      scrollToCollector(ens);
+
+    } catch (e) {
+      console.error(e);
+      btn.textContent = 'Connect Wallet';
+    }
+  } else {
+    // No wallet detected — prompt Privy iframe flow
+    btn.textContent = 'No wallet found';
+    setTimeout(() => btn.textContent = 'Connect Wallet', 2000);
+  }
+}
+
+function highlightWalletInTerrain(wallet, ens) {
+  // Find matching node and highlight it
+  d3.selectAll('.collector-node').each(function(d) {
+    if (d.label === ens || d.address === wallet) {
+      d3.select(this).classed('highlight', true);
+    }
+  });
+
+  // Re-render elevation with self highlighted
+  renderElevation(state.collectors, ens);
+}
+
+function scrollToCollector(ens) {
+  const elevationSection = document.getElementById('elevation');
+  if (elevationSection) {
+    setTimeout(() => elevationSection.scrollIntoView({ behavior: 'smooth' }), 500);
+  }
+}
+
+function highlightCollector(d) {
+  // On click, highlight in terrain and scroll to elevation row
+  d3.selectAll('.collector-node').classed('highlight', false);
+  d3.selectAll('.collector-node').filter(n => n.id === d.id).classed('highlight', true);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════════
+
+function updateClock() {
+  const now = new Date();
+  const nzTime = new Intl.DateTimeFormat('en-NZ', {
+    timeZone: 'Pacific/Auckland',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).format(now);
+  const el = document.getElementById('hud-time');
+  if (el) el.textContent = `NZT ${nzTime}`;
+}
+
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════════════════════════════════
+// LOADING + INIT
+// ═══════════════════════════════════════════════════════════════
+
+function setLoaderProgress(pct, status) {
+  document.getElementById('loader-bar').style.width = `${pct}%`;
+  document.getElementById('loader-status').textContent = status;
+}
+
+async function init() {
+  setLoaderProgress(10, 'Generating terrain...');
+
+  // Use demo data first (renders instantly)
+  const demoCollectors = generateDemoData();
+  state.collectors = demoCollectors;
+
+  setLoaderProgress(30, 'Plotting survey points...');
+  renderTerrain(demoCollectors);
+
+  setLoaderProgress(60, 'Computing elevation...');
+  renderElevation(demoCollectors);
+
+  setLoaderProgress(80, 'Mapping affinity lines...');
+  renderAffinity(demoCollectors);
+
+  setLoaderProgress(100, 'Terrain ready');
+
+  // Hide loader
+  setTimeout(() => {
+    document.getElementById('loader').classList.add('hidden');
+  }, 600);
+
+  // Then fetch real data in background
+  fetchLiveData();
+}
+
+async function fetchLiveData() {
+  // Fetch real MintFace collectors
+  const allMFHolders = new Map(); // wallet -> Set of collection IDs
+
+  for (const col of MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract)) {
+    try {
+      const holders = await getHolders(col.contract, col.chain, 100);
+      holders.forEach(wallet => {
+        if (!allMFHolders.has(wallet)) allMFHolders.set(wallet, new Set());
+        allMFHolders.get(wallet).add(col.id);
+      });
+    } catch (e) {
+      console.warn(`Failed to fetch ${col.name}:`, e);
+    }
+  }
+
+  if (allMFHolders.size === 0) {
+    console.log('No live data fetched, keeping demo');
+    return;
+  }
+
+  // Resolve ENS + check affinity for top collectors
+  const liveCollectors = new Map();
+  const wallets = [...allMFHolders.entries()];
+
+  for (const [wallet, holds] of wallets.slice(0, 80)) {
+    const ens = await resolveENS(wallet);
+
+    // Check affinity (sample — checking all would be too many API calls)
+    let abCount = 0, photoCount = 0, humanCount = 0;
+
+    if (holds.has('patrimora')) {
+      try {
+        const res = await checkAffinityContracts(wallet, [
+          { name: 'Art Blocks', contract: 'art-blocks-curated' }
+        ]);
+        abCount = res.count;
+      } catch {}
+    }
+
+    if (holds.has('two-burdens')) {
+      try {
+        const res = await checkAffinityContracts(wallet, [
+          ...APOCALYPSE_CONTRACTS, ...UNDERSCORE_CONTRACTS, ...HAFFKTA_CONTRACTS
+        ]);
+        humanCount = res.count;
+      } catch {}
+    }
+
+    liveCollectors.set(ens, {
+      ens,
+      address: wallet,
+      mintfaceHolds: [...holds],
+      affinityHolds: { artblocks: abCount, photography: photoCount, human: humanCount }
+    });
+  }
+
+  // Re-render with live data
+  state.collectors = liveCollectors;
+  renderTerrain(liveCollectors);
+  renderElevation(liveCollectors, state.connectedWallet);
+  renderAffinity(liveCollectors);
+
+  console.log(`Live data: ${liveCollectors.size} collectors`);
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>
