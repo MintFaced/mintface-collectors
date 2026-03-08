@@ -334,6 +334,103 @@
     gap: 4px;
   }
 
+  /* ── Collection node popup card ── */
+  .collection-card {
+    position: fixed;
+    z-index: 200;
+    min-width: 240px;
+    max-width: 300px;
+    background: rgba(10,9,8,0.97);
+    border: 1px solid var(--grid);
+    padding: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    backdrop-filter: blur(12px);
+  }
+
+  .collection-card.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .collection-card-stripe {
+    height: 3px;
+    width: 100%;
+  }
+
+  .collection-card-body {
+    padding: 14px 16px 16px;
+  }
+
+  .collection-card-eyebrow {
+    font-family: var(--mono);
+    font-size: 7px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .collection-card-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--paper);
+    margin-bottom: 10px;
+    line-height: 1.3;
+  }
+
+  .collection-card-desc {
+    font-family: var(--sans);
+    font-size: 10px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  .collection-card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .collection-card-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .collection-card-stat-label {
+    font-family: var(--mono);
+    font-size: 7px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .collection-card-stat-value {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  .collection-card-link {
+    display: block;
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 6px 10px;
+    border: 1px solid;
+    text-align: center;
+    transition: opacity 0.15s;
+    opacity: 0.8;
+  }
+
+  .collection-card-link:hover { opacity: 1; }
+
   .tooltip-tag {
     font-size: 7px;
     letter-spacing: 0.1em;
@@ -1021,6 +1118,35 @@
 </div>
 
 <!-- ── TERRAIN ── -->
+<!-- ── COLLECTION NODE CARD ── -->
+<div class="collection-card" id="collection-card">
+  <div class="collection-card-stripe" id="cc-stripe"></div>
+  <div class="collection-card-body">
+    <div class="collection-card-eyebrow" id="cc-eyebrow"></div>
+    <div class="collection-card-title" id="cc-title"></div>
+    <div class="collection-card-desc" id="cc-desc"></div>
+    <div class="collection-card-stats">
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Artworks</div>
+        <div class="collection-card-stat-value" id="cc-artworks"></div>
+      </div>
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Chain</div>
+        <div class="collection-card-stat-value" id="cc-chain"></div>
+      </div>
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Medium</div>
+        <div class="collection-card-stat-value" id="cc-medium"></div>
+      </div>
+      <div class="collection-card-stat">
+        <div class="collection-card-stat-label">Collectors</div>
+        <div class="collection-card-stat-value" id="cc-collectors"></div>
+      </div>
+    </div>
+    <a class="collection-card-link" id="cc-link" href="#" target="_blank" rel="noopener">View Collection →</a>
+  </div>
+</div>
+
 <!-- ── SELECTED COLLECTOR CARD ── -->
 <div id="selected-card">
   <div class="selected-card-inner">
@@ -1115,14 +1241,14 @@
 // ═══════════════════════════════════════════════════════════════
 
 const MINTFACE_COLLECTIONS = [
-  { id: 'artificial-flowers', name: 'Artificial Flowers', year: 2025, contract: '0xd64ac59835a9951f34472239ba70b44c5bebe90d', chain: 'ethereum' },
-  { id: 'patrimora',          name: 'Patrimora',          year: 2025, contract: '0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8', chain: 'ethereum' },
-  { id: 'two-burdens',        name: 'Two Burdens',        year: 2024, contract: '0xe1d1f99505a13d20b25d5ef32280771d7eb5ed09', chain: 'ethereum' },
-  { id: 'recursive-mind',     name: 'Recursive Mind',     year: 2023, contract: null, chain: 'bitcoin' }, // BTC Ordinals
-  { id: 'geodetica',          name: 'Geodetica',          year: 2022, contract: '0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933', chain: 'ethereum' },
-  { id: 'roads-rivers',       name: 'Roads & Rivers',     year: 2022, contract: '0x18bd004e13258f569cedfbb537ba329e4730ee67', chain: 'ethereum' },
-  { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum' },
-  { id: 'geodetic-home',      name: 'Geodetic Home',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum' },
+  { id: 'artificial-flowers', name: 'Artificial Flowers', year: 2025, contract: '0xd64ac59835a9951f34472239ba70b44c5bebe90d', chain: 'ethereum', artworks: 21,  medium: 'Neural Painting',  desc: 'Hand-painted works merged with AI and augmented reality — flowers that exist between the physical and the digital.' },
+  { id: 'patrimora',          name: 'Patrimora',          year: 2025, contract: '0xEabffdE679Fe5F0b835771aeA36d90C1ce7502d8', chain: 'ethereum', artworks: 469, medium: 'Generative Art',   desc: 'A generative exploration of inherited identity — 469 unique works derived from a single patrilineal algorithm.' },
+  { id: 'two-burdens',        name: 'Two Burdens',        year: 2024, contract: '0xe1d1f99505a13d20b25d5ef32280771d7eb5ed09', chain: 'ethereum', artworks: 36,  medium: 'Painting',        desc: 'Large-scale oil paintings confronting the weight of modern existence — exhibited at NFT NYC 2024 and The Line, NZ.' },
+  { id: 'recursive-mind',     name: 'Recursive Mind',     year: 2023, contract: null,                                           chain: 'bitcoin',  artworks: 8,   medium: 'Illustration',    desc: 'Eight hand-drawn illustrations inscribed on Bitcoin Ordinals — a meditation on self-referential thought.' },
+  { id: 'geodetica',          name: 'Geodetica',          year: 2022, contract: '0xf6f44f3dde8ea78a3f49f78eeca339ffa17b2933', chain: 'ethereum', artworks: 100, medium: 'Pure AI',          desc: '100 AI-generated works mapping imaginary geological survey territories — the first MintFace AI collection.' },
+  { id: 'roads-rivers',       name: 'Roads & Rivers',     year: 2022, contract: '0x18bd004e13258f569cedfbb537ba329e4730ee67', chain: 'ethereum', artworks: 40,  medium: 'Photography',     desc: '40 photographs tracing the infrastructural veins of the landscape — roads and waterways as abstract systems.' },
+  { id: 'geodetic-moments',   name: 'Geodetic Moments',   year: 2021, contract: '0x495f947276749ce646f68ac8c248420045cb7b5e', chain: 'ethereum', artworks: 100, medium: 'Photography',     desc: '100 photographic moments captured across New Zealand terrain — the founding MintFace collection.' },
+  { id: 'geodetic-home',      name: 'Geodetic Home',      year: 2025, contract: '0x7b5ccc13ffacf2bc8204be1359a3eea3cae4dce4', chain: 'ethereum', artworks: 5,   medium: 'Sculpture',       desc: 'Five on-chain sculptures — geodetic survey markers reimagined as collectible 3D objects on Ethereum.' },
 ];
 
 // Per-collection color + OpenSea URL
@@ -1479,6 +1605,12 @@ function renderTerrain(collectors) {
     .attr('y', d => d.r + 16)
     .attr('text-anchor', 'middle')
     .text(d => d.year);
+
+  colSel
+    .style('cursor', 'pointer')
+    .on('click', (event, d) => { event.stopPropagation(); showCollectionCard(event, d); })
+    .on('mouseenter', (event, d) => showCollectionCard(event, d))
+    .on('mouseleave', () => hideCollectionCard());
 
   // Collector nodes
   const collectorG = mainG.append('g').attr('class', 'collectors');
@@ -1858,6 +1990,52 @@ function scrollToCollector(ens) {
   if (elevationSection) {
     setTimeout(() => elevationSection.scrollIntoView({ behavior: 'smooth' }), 500);
   }
+}
+
+function showCollectionCard(event, d) {
+  const col = MINTFACE_COLLECTIONS.find(c => c.id === d.id);
+  if (!col) return;
+  const meta = COLLECTION_META[d.id] || {};
+
+  // Count collectors who hold this collection
+  let holderCount = 0;
+  state.collectors.forEach(c => { if (c.mintfaceHolds.includes(d.id)) holderCount++; });
+
+  const card = document.getElementById('collection-card');
+  document.getElementById('cc-stripe').style.background = meta.color || 'var(--survey)';
+  document.getElementById('cc-eyebrow').textContent = col.year + ' · ' + (col.chain === 'bitcoin' ? 'Bitcoin' : 'Ethereum');
+  document.getElementById('cc-eyebrow').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-title').textContent = col.name;
+  document.getElementById('cc-title').style.color = meta.color || 'var(--paper)';
+  document.getElementById('cc-desc').textContent = col.desc || '';
+  document.getElementById('cc-artworks').textContent = col.artworks || '—';
+  document.getElementById('cc-artworks').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-chain').textContent = col.chain === 'bitcoin' ? 'BTC' : 'ETH';
+  document.getElementById('cc-chain').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-medium').textContent = col.medium || '—';
+  document.getElementById('cc-medium').style.color = meta.color || 'var(--survey)';
+  document.getElementById('cc-collectors').textContent = holderCount;
+  document.getElementById('cc-collectors').style.color = meta.color || 'var(--survey)';
+  const link = document.getElementById('cc-link');
+  link.href = meta.url || '#';
+  link.style.color = meta.color || 'var(--survey)';
+  link.style.borderColor = meta.border || 'var(--survey-dim)';
+
+  // Position near cursor but keep within viewport
+  const margin = 16;
+  const rect = card.getBoundingClientRect();
+  let x = event.clientX + 16;
+  let y = event.clientY - 20;
+  if (x + 300 > window.innerWidth) x = event.clientX - 316;
+  if (y + 320 > window.innerHeight) y = window.innerHeight - 320 - margin;
+  if (y < margin) y = margin;
+  card.style.left = x + 'px';
+  card.style.top = y + 'px';
+  card.classList.add('visible');
+}
+
+function hideCollectionCard() {
+  document.getElementById('collection-card').classList.remove('visible');
 }
 
 function highlightCollector(d) {
