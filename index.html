@@ -1439,25 +1439,27 @@ function renderElevation(collectors, connectedWallet = null) {
   const grid = document.getElementById('elevation-grid');
   grid.innerHTML = '';
 
-  const colCount = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum').length;
+  const colCount = MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract).length;
 
   // Sort by completion %
   const sorted = [...collectors.entries()].sort((a, b) => {
     return b[1].mintfaceHolds.length - a[1].mintfaceHolds.length;
   });
 
-  sorted.forEach(([ens, data]) => {
+  sorted.forEach(([address, data]) => {
+    const displayName = data.ens || address;
     const pct = Math.round((data.mintfaceHolds.length / colCount) * 100);
-    const isSelf = connectedWallet && ens === connectedWallet;
+    const isSelf = connectedWallet && (address === connectedWallet || displayName === connectedWallet);
 
     const row = document.createElement('div');
     row.className = `elevation-row${isSelf ? ' is-self' : ''}`;
-    row.dataset.address = data.address || ens;
+    row.dataset.address = address;
+    row.dataset.ens = displayName;
 
     // Name
     const nameDiv = document.createElement('div');
     nameDiv.className = 'elevation-collector';
-    nameDiv.textContent = isSelf ? `▶ ${ens}` : ens;
+    nameDiv.textContent = isSelf ? `▶ ${displayName}` : displayName;
     row.appendChild(nameDiv);
 
     // Bar
@@ -1707,8 +1709,7 @@ function filterElevation(query) {
 
   let visible = 0;
   rows.forEach(row => {
-    // Search both the displayed ENS name AND the stored raw address
-    const displayName = (row.querySelector('.elevation-collector')?.textContent || '').toLowerCase();
+    const displayName = (row.dataset.ens || row.querySelector('.elevation-collector')?.textContent || '').toLowerCase();
     const rawAddress = (row.dataset.address || '').toLowerCase();
     const match = !q || displayName.includes(q) || rawAddress.includes(q);
     row.classList.toggle('hidden', !match);
@@ -1805,21 +1806,31 @@ async function enrichLiveData() {
   const entries = [...state.collectors.entries()];
   let anyUpdated = false;
 
-  for (const [address, data] of entries.slice(0, 100)) {
+  let batchCount = 0;
+  for (const [address, data] of entries.slice(0, 120)) {
     try {
       const ens = await resolveENS(address);
       if (ens !== address) {
         data.ens = ens;
         anyUpdated = true;
+        // Update the matching elevation row in place without full re-render
+        const row = document.querySelector(`.elevation-row[data-address="${address}"]`);
+        if (row) {
+          row.dataset.ens = ens;
+          const nameEl = row.querySelector('.elevation-collector');
+          if (nameEl) nameEl.textContent = ens;
+        }
+        // Update terrain node label
+        d3.selectAll('.collector-node').each(function(d) {
+          if (d.address === address) { d.label = ens; }
+        });
+        d3.selectAll('.collector-node text').filter(function(d) {
+          return d && d.address === address;
+        }).text(d => d.label.length > 12 ? d.label.slice(0,10)+'…' : d.label);
       }
     } catch {}
-    await new Promise(r => setTimeout(r, 80)); // gentle rate limit
-  }
-
-  if (anyUpdated) {
-    renderTerrain(state.collectors);
-    renderElevation(state.collectors, state.connectedWallet);
-    renderAffinity(state.collectors);
+    batchCount++;
+    await new Promise(r => setTimeout(r, 60));
   }
 
   // Phase 2: affinity enrichment via OpenSea (patrimora + two-burdens holders only)
