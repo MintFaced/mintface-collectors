@@ -1976,15 +1976,21 @@ async function connectWallet() {
 }
 
 function highlightWalletInTerrain(wallet, ens) {
-  // Find matching node and highlight it
-  d3.selectAll('.collector-node').each(function(d) {
-    if (d.label === ens || d.address === wallet) {
-      d3.select(this).classed('highlight', true);
+  // Try address match first, then ENS label match
+  let matchedAddress = null;
+  state.collectors.forEach((data, addr) => {
+    if (addr === wallet || data.ens === ens || data.ens === wallet) {
+      matchedAddress = addr;
     }
   });
 
-  // Re-render elevation with self highlighted
-  renderElevation(state.collectors, ens);
+  if (matchedAddress) {
+    // Full focus mode — pulse, dim others, highlight elevation
+    selectCollector(matchedAddress);
+  } else {
+    // Wallet connected but not a collector yet — still update button
+    console.log('Wallet connected but not found in collector snapshot:', wallet);
+  }
 }
 
 function scrollToCollector(ens) {
