@@ -2288,9 +2288,9 @@ function selectCollector(address) {
   // Update elevation — highlight row, dim others
   document.querySelectorAll('.elevation-row').forEach(row => {
     const isMatch = row.dataset.address === address;
-    row.classList.toggle('hidden', false);
+    row.classList.toggle('hidden', !isMatch);
     row.classList.toggle('search-highlight', isMatch);
-    row.style.opacity = isMatch ? '1' : '0.3';
+    row.style.opacity = '1';
   });
 
   // Populate selected collector card above terrain
