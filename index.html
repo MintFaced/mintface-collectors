@@ -1606,97 +1606,119 @@ function setLoaderProgress(pct, status) {
   document.getElementById('loader-status').textContent = status;
 }
 
+async function loadSnapshot() {
+  try {
+    const res = await fetch('/snapshot.json');
+    if (!res.ok) throw new Error('no snapshot');
+    const data = await res.json();
+    const collectors = new Map();
+    for (const c of data.collectors) {
+      collectors.set(c.address, {
+        ens: c.address,  // raw addr — ENS resolved lazily in background
+        address: c.address,
+        mintfaceHolds: c.mintfaceHolds,
+        affinityHolds: c.affinityHolds || { artblocks: 0, photography: 0, human: 0 },
+      });
+    }
+    return collectors;
+  } catch {
+    return null;
+  }
+}
+
 async function init() {
-  setLoaderProgress(10, 'Generating terrain...');
+  setLoaderProgress(10, 'Loading collector data...');
 
-  // Use demo data first (renders instantly)
-  const demoCollectors = generateDemoData();
-  state.collectors = demoCollectors;
+  let collectors = await loadSnapshot();
 
-  setLoaderProgress(30, 'Plotting survey points...');
-  renderTerrain(demoCollectors);
+  if (collectors && collectors.size > 0) {
+    setLoaderProgress(40, `${collectors.size} collectors surveyed...`);
+    state.collectors = collectors;
+  } else {
+    setLoaderProgress(40, 'Generating terrain...');
+    collectors = generateDemoData();
+    state.collectors = collectors;
+  }
 
-  setLoaderProgress(60, 'Computing elevation...');
-  renderElevation(demoCollectors);
+  setLoaderProgress(60, 'Plotting survey points...');
+  renderTerrain(state.collectors);
 
-  setLoaderProgress(80, 'Mapping affinity lines...');
-  renderAffinity(demoCollectors);
+  setLoaderProgress(80, 'Computing elevation...');
+  renderElevation(state.collectors);
+
+  setLoaderProgress(95, 'Mapping affinity lines...');
+  renderAffinity(state.collectors);
 
   setLoaderProgress(100, 'Terrain ready');
 
-  // Hide loader
   setTimeout(() => {
     document.getElementById('loader').classList.add('hidden');
   }, 600);
 
-  // Then fetch real data in background
-  fetchLiveData();
+  // Background: resolve ENS names + enrich with affinity via OpenSea
+  enrichLiveData();
 }
 
-async function fetchLiveData() {
-  // Fetch real MintFace collectors
-  const allMFHolders = new Map(); // wallet -> Set of collection IDs
+async function enrichLiveData() {
+  // Phase 1: resolve ENS for all addresses (batched, no rush)
+  const entries = [...state.collectors.entries()];
+  let anyUpdated = false;
 
-  for (const col of MINTFACE_COLLECTIONS.filter(c => c.chain === 'ethereum' && c.contract)) {
+  for (const [address, data] of entries.slice(0, 100)) {
     try {
-      const holders = await getHolders(col.contract, col.chain, 100);
-      holders.forEach(wallet => {
-        if (!allMFHolders.has(wallet)) allMFHolders.set(wallet, new Set());
-        allMFHolders.get(wallet).add(col.id);
-      });
-    } catch (e) {
-      console.warn(`Failed to fetch ${col.name}:`, e);
-    }
+      const ens = await resolveENS(address);
+      if (ens !== address) {
+        data.ens = ens;
+        anyUpdated = true;
+      }
+    } catch {}
+    await new Promise(r => setTimeout(r, 80)); // gentle rate limit
   }
 
-  if (allMFHolders.size === 0) {
-    console.log('No live data fetched, keeping demo');
-    return;
+  if (anyUpdated) {
+    renderTerrain(state.collectors);
+    renderElevation(state.collectors, state.connectedWallet);
+    renderAffinity(state.collectors);
   }
 
-  // Resolve ENS + check affinity for top collectors
-  const liveCollectors = new Map();
-  const wallets = [...allMFHolders.entries()];
+  // Phase 2: affinity enrichment via OpenSea (patrimora + two-burdens holders only)
+  for (const [address, data] of entries) {
+    let changed = false;
 
-  for (const [wallet, holds] of wallets.slice(0, 80)) {
-    const ens = await resolveENS(wallet);
-
-    // Check affinity (sample — checking all would be too many API calls)
-    let abCount = 0, photoCount = 0, humanCount = 0;
-
-    if (holds.has('patrimora')) {
+    if (data.mintfaceHolds.includes('patrimora') && data.affinityHolds.artblocks === 0) {
       try {
-        const res = await checkAffinityContracts(wallet, [
-          { name: 'Art Blocks', contract: 'art-blocks-curated' }
+        const res = await checkAffinityContracts(address, [
+          { name: 'Art Blocks Factory', contract: AB_FACTORY },
+          { name: 'Art Blocks V3', contract: AB_V3 },
         ]);
-        abCount = res.count;
+        if (res.count > 0) { data.affinityHolds.artblocks = res.count; changed = true; }
       } catch {}
     }
 
-    if (holds.has('two-burdens')) {
+    if (data.mintfaceHolds.includes('two-burdens') && data.affinityHolds.human === 0) {
       try {
-        const res = await checkAffinityContracts(wallet, [
+        const res = await checkAffinityContracts(address, [
           ...APOCALYPSE_CONTRACTS, ...UNDERSCORE_CONTRACTS, ...HAFFKTA_CONTRACTS
         ]);
-        humanCount = res.count;
+        if (res.count > 0) { data.affinityHolds.human = res.count; changed = true; }
       } catch {}
     }
 
-    liveCollectors.set(ens, {
-      ens,
-      address: wallet,
-      mintfaceHolds: [...holds],
-      affinityHolds: { artblocks: abCount, photography: photoCount, human: humanCount }
-    });
+    if (data.mintfaceHolds.includes('geodetic-moments') && data.affinityHolds.photography === 0) {
+      try {
+        // Check a sample of photography contracts via collection slug
+        const photoSample = PHOTO_ARTISTS.slice(0, 5).map(slug => ({ name: slug, contract: slug }));
+        const res = await checkAffinityContracts(address, photoSample);
+        if (res.count > 0) { data.affinityHolds.photography = res.count; changed = true; }
+      } catch {}
+    }
+
+    if (changed) {
+      renderAffinity(state.collectors);
+    }
+
+    await new Promise(r => setTimeout(r, 200));
   }
-
-  // Re-render with live data
-  state.collectors = liveCollectors;
-  renderTerrain(liveCollectors);
-  renderElevation(liveCollectors, state.connectedWallet);
-  renderAffinity(liveCollectors);
-
-  console.log(`Live data: ${liveCollectors.size} collectors`);
 }
 
 // ── Start ──
