@@ -769,6 +769,85 @@
     pointer-events: none;
   }
 
+
+  /* ── SEARCH DROPDOWN ── */
+  .search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: rgba(8,8,18,0.98);
+    border: 1px solid var(--grid-bright);
+    border-top: none;
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 500;
+    display: none;
+  }
+
+  .search-dropdown.visible { display: block; }
+
+  .search-dropdown::-webkit-scrollbar { width: 2px; }
+  .search-dropdown::-webkit-scrollbar-track { background: transparent; }
+  .search-dropdown::-webkit-scrollbar-thumb { background: var(--survey-dim); }
+
+  .dropdown-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--grid);
+    transition: background 0.1s;
+  }
+
+  .dropdown-item:last-child { border-bottom: none; }
+
+  .dropdown-item:hover,
+  .dropdown-item.active {
+    background: rgba(196,168,130,0.08);
+  }
+
+  .dropdown-item-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--survey);
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dropdown-item-name em {
+    font-style: normal;
+    color: var(--ink);
+    background: rgba(196,168,130,0.2);
+    padding: 0 2px;
+  }
+
+  .dropdown-item-tags {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .dropdown-tag {
+    font-size: 7px;
+    letter-spacing: 0.1em;
+    padding: 2px 5px;
+    border: 1px solid var(--survey-dim);
+    color: var(--survey-dim);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .dropdown-empty {
+    padding: 16px 20px;
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+  }
   .elevation-row.hidden { display: none; }
   .elevation-row.search-highlight { background: rgba(196,168,130,0.06); }
 
@@ -822,11 +901,13 @@
     type="text"
     placeholder="Search collector — ENS name or wallet address..."
     oninput="filterElevation(this.value)"
+    onkeydown="searchKeyNav(event)"
     autocomplete="off"
     spellcheck="false"
   />
   <span class="search-count" id="search-count"></span>
   <button class="search-clear" id="search-clear" onclick="clearSearch()">×</button>
+  <div class="search-dropdown" id="search-dropdown"></div>
 </div>
 
 <!-- ── TERRAIN ── -->
@@ -1257,11 +1338,11 @@ function renderTerrain(collectors) {
 
   const mainG = svg.append('g').attr('class', 'main');
 
-  // Zoom
-  svg.call(d3.zoom()
+  // Zoom — store on state so selectCollector can pan programmatically
+  state.zoom = d3.zoom()
     .scaleExtent([0.3, 3])
-    .on('zoom', (event) => mainG.attr('transform', event.transform))
-  );
+    .on('zoom', (event) => mainG.attr('transform', event.transform));
+  svg.call(state.zoom);
 
   // Links
   const linkG = mainG.append('g').attr('class', 'links');
@@ -1699,47 +1780,198 @@ function setLoaderProgress(pct, status) {
 // SEARCH
 // ═══════════════════════════════════════════════════════════════
 
+let dropdownActiveIndex = -1;
+
 function filterElevation(query) {
   const q = query.trim().toLowerCase();
   const rows = document.querySelectorAll('.elevation-row');
   const clearBtn = document.getElementById('search-clear');
   const countEl = document.getElementById('search-count');
+  const dropdown = document.getElementById('search-dropdown');
 
-  clearBtn.style.display = q ? 'block' : 'none';
+  dropdownActiveIndex = -1;
 
-  let visible = 0;
-  rows.forEach(row => {
-    const displayName = (row.dataset.ens || row.querySelector('.elevation-collector')?.textContent || '').toLowerCase();
-    const rawAddress = (row.dataset.address || '').toLowerCase();
-    const match = !q || displayName.includes(q) || rawAddress.includes(q);
-    row.classList.toggle('hidden', !match);
-    row.classList.toggle('search-highlight', match && q.length > 0);
-    if (match) visible++;
-  });
-
-  if (q) {
-    countEl.textContent = `${visible} found`;
-    countEl.style.display = 'block';
-    clearBtn.style.display = 'block';
-  } else {
-    countEl.style.display = 'none';
+  if (!q) {
     clearBtn.style.display = 'none';
-  }
-
-  // Also highlight matching nodes in terrain
-  if (q.length >= 3) {
-    d3.selectAll('.collector-node').each(function(d) {
-      const labelMatch = d.label.toLowerCase().includes(q);
-      const addrMatch = (d.address || '').toLowerCase().includes(q);
-      d3.select(this).classed('highlight', labelMatch || addrMatch);
+    countEl.style.display = 'none';
+    dropdown.classList.remove('visible');
+    dropdown.innerHTML = '';
+    rows.forEach(row => {
+      row.classList.remove('hidden', 'search-highlight');
     });
-  } else {
     d3.selectAll('.collector-node').classed('highlight', false);
     if (state.connectedWallet) {
       d3.selectAll('.collector-node').filter(d => d.label === state.connectedWallet).classed('highlight', true);
     }
+    return;
+  }
+
+  clearBtn.style.display = 'block';
+
+  // Filter elevation rows
+  let matches = [];
+  rows.forEach(row => {
+    const displayName = (row.dataset.ens || '').toLowerCase();
+    const rawAddress = (row.dataset.address || '').toLowerCase();
+    const match = displayName.includes(q) || rawAddress.includes(q);
+    row.classList.toggle('hidden', !match);
+    row.classList.toggle('search-highlight', match);
+    if (match) {
+      matches.push({
+        ens: row.dataset.ens || row.dataset.address,
+        address: row.dataset.address,
+        holds: row.querySelectorAll('.elevation-segment[style*="rgba(122"]').length,
+      });
+    }
+  });
+
+  countEl.textContent = `${matches.length} found`;
+  countEl.style.display = 'block';
+
+  // Build dropdown
+  dropdown.innerHTML = '';
+  if (matches.length === 0) {
+    dropdown.innerHTML = '<div class="dropdown-empty">No collectors found</div>';
+    dropdown.classList.add('visible');
+    return;
+  }
+
+  matches.slice(0, 30).forEach((m, i) => {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    item.dataset.address = m.address;
+
+    // Highlight matched portion in name
+    const displayName = m.ens;
+    const qIdx = displayName.toLowerCase().indexOf(q);
+    let nameHtml = displayName;
+    if (qIdx >= 0) {
+      nameHtml = displayName.slice(0, qIdx)
+        + '<em>' + displayName.slice(qIdx, qIdx + q.length) + '</em>'
+        + displayName.slice(qIdx + q.length);
+    }
+
+    // Get holds from state
+    const collectorData = state.collectors.get(m.address);
+    const holds = collectorData ? collectorData.mintfaceHolds : [];
+
+    const tagsHtml = holds.slice(0, 3).map(h => {
+      const col = MINTFACE_COLLECTIONS.find(c => c.id === h);
+      return col ? `<span class="dropdown-tag">${col.name.split(' ')[0]}</span>` : '';
+    }).join('');
+
+    item.innerHTML = `
+      <div class="dropdown-item-name">${nameHtml}</div>
+      <div class="dropdown-item-tags">${tagsHtml}</div>
+    `;
+
+    item.addEventListener('click', () => selectCollector(m.address));
+    item.addEventListener('mouseenter', () => {
+      dropdownActiveIndex = i;
+      updateDropdownActive();
+    });
+    dropdown.appendChild(item);
+  });
+
+  dropdown.classList.add('visible');
+
+  // Highlight matching terrain nodes
+  d3.selectAll('.collector-node').each(function(d) {
+    const labelMatch = d.label && d.label.toLowerCase().includes(q);
+    const addrMatch = d.address && d.address.toLowerCase().includes(q);
+    d3.select(this).classed('highlight', labelMatch || addrMatch);
+  });
+}
+
+function updateDropdownActive() {
+  const items = document.querySelectorAll('.dropdown-item');
+  items.forEach((item, i) => {
+    item.classList.toggle('active', i === dropdownActiveIndex);
+  });
+}
+
+function searchKeyNav(event) {
+  const dropdown = document.getElementById('search-dropdown');
+  const items = document.querySelectorAll('.dropdown-item');
+  if (!dropdown.classList.contains('visible') || items.length === 0) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    dropdownActiveIndex = Math.min(dropdownActiveIndex + 1, items.length - 1);
+    updateDropdownActive();
+    items[dropdownActiveIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    dropdownActiveIndex = Math.max(dropdownActiveIndex - 1, 0);
+    updateDropdownActive();
+    items[dropdownActiveIndex]?.scrollIntoView({ block: 'nearest' });
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const activeItem = items[dropdownActiveIndex];
+    if (activeItem) selectCollector(activeItem.dataset.address);
+  } else if (event.key === 'Escape') {
+    document.getElementById('search-dropdown').classList.remove('visible');
   }
 }
+
+function selectCollector(address) {
+  const dropdown = document.getElementById('search-dropdown');
+  const input = document.getElementById('collector-search');
+  const data = state.collectors.get(address);
+  if (!data) return;
+
+  const displayName = data.ens || address;
+  input.value = displayName;
+  dropdown.classList.remove('visible');
+
+  // Clear all highlights, set just this one
+  d3.selectAll('.collector-node').classed('highlight', false);
+
+  // Find the node, highlight it and pan terrain to centre on it
+  let targetNode = null;
+  d3.selectAll('.collector-node').each(function(d) {
+    if (d.address === address || d.label === displayName) {
+      d3.select(this).classed('highlight', true);
+      targetNode = d;
+    }
+  });
+
+  // Pan the terrain to centre on the selected node
+  if (targetNode && targetNode.x != null && state.zoom) {
+    const svg = d3.select('#terrain-svg');
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const scale = 1.8;
+    const tx = W / 2 - scale * targetNode.x;
+    const ty = H / 2 - scale * targetNode.y;
+
+    svg.transition()
+      .duration(700)
+      .call(state.zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+  }
+
+  // Scroll to elevation row and flash it
+  const row = document.querySelector(`.elevation-row[data-address="${address}"]`);
+  if (row) {
+    row.classList.remove('hidden');
+    setTimeout(() => {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.transition = 'background 0.3s';
+      row.style.background = 'rgba(196,168,130,0.15)';
+      setTimeout(() => { row.style.background = ''; }, 1200);
+    }, 400);
+  }
+
+  // Update count
+  document.getElementById('search-count').textContent = displayName;
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.terrain-search-wrap')) {
+    document.getElementById('search-dropdown')?.classList.remove('visible');
+  }
+});
 
 function clearSearch() {
   const input = document.getElementById('collector-search');
